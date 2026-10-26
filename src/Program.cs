@@ -4,6 +4,13 @@ using Microsoft.AspNetCore.DataProtection;
 using SpamSharp;
 using SpamSharp.Components;
 
+// Fehlersuche: docker exec spamsharp /app/SpamSharp --discover name@domain.de
+if (args is ["--discover", var address])
+{
+    Console.WriteLine((await Autodiscover.Find(address))?.ToString() ?? "nichts gefunden");
+    return 0;
+}
+
 var adminPassword = Environment.GetEnvironmentVariable("ADMIN_PASSWORD");
 if (string.IsNullOrEmpty(adminPassword))
 {

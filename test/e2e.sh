@@ -55,9 +55,11 @@ with smtplib.SMTP("greenmail-test", 3025) as s:
     text = " ".join(f"Wort{i} Treffen Projekt Besprechung Kalender Woche Termin" for i in range(40))  # lang genug zum Lernen
     s.sendmail("hans@example.org", ["test@test.local"], mail("Hallo", text))
     s.sendmail("hans@example.org", ["test@test.local"], mail("Gewinn", GTUBE))
+import imaplib
+m = imaplib.IMAP4("greenmail-test", 3143); m.login("test@test.local", "pw"); m.create("Spamverdacht"); m.logout()  # wie bei GMX
 db = sqlite3.connect("/data/spamsharp.db")
 db.execute("insert into accounts(name,host,port,username,password,folder,spamfolder,threshold,enabled) "
-           "values('Test','greenmail-test',3993,'test@test.local','pw','INBOX','Junk',6,1)")
+           "values('Test','greenmail-test',3993,'test@test.local','pw','INBOX','',6,1)")
 db.execute("insert or replace into settings values('interval','10')")
 db.commit()
 EOF
@@ -91,21 +93,21 @@ def move(subject, src, dst):
     m.uid("COPY", uid, dst); m.uid("STORE", uid, "+FLAGS", r"(\Deleted)"); m.expunge(); m.logout()
 log = lambda: [r[0] for r in sqlite3.connect("/data/spamsharp.db").execute("select action from log")]
 
-wait("Spam nach Junk verschoben, normale Mail bleibt", lambda: "Gewinn" in subjects("Junk") and "Hallo" in subjects("INBOX"))
+wait("Spam-Ordner automatisch erkannt (Spamverdacht), normale Mail bleibt", lambda: "Gewinn" in subjects("Spamverdacht") and "Hallo" in subjects("INBOX"))
 wait("Lernordner angelegt", lambda: imap().select("Spam-lernen")[0] == "OK" and imap().select("Kein-Spam")[0] == "OK")
-assert all("\\Seen" not in f for f in {**subjects("INBOX"), **subjects("Junk")}.values()), "Mails wurden als gelesen markiert"
+assert all("\\Seen" not in f for f in {**subjects("INBOX"), **subjects("Spamverdacht")}.values()), "Mails wurden als gelesen markiert"
 print("   OK: Mails bleiben ungelesen")
 
-move("Gewinn", "Junk", "INBOX")
+move("Gewinn", "Spamverdacht", "INBOX")
 wait("zurückgeholte Mail bleibt im Posteingang", lambda: any(a.startswith("zurückgeholt") for a in log()))
 time.sleep(12)
 assert "Gewinn" in subjects("INBOX"), "zurückgeholte Mail wurde erneut verschoben"
 print("   OK: zurückgeholte Mail bleibt auch nach weiterem Lauf im Posteingang")
 
 move("Hallo", "INBOX", "Spam-lernen")
-wait("Lernordner: als Spam gelernt und nach Junk verschoben",
-     lambda: "Hallo" in subjects("Junk") and any("als Spam gelernt" in a for a in log()))  # lange Mail: wirklich gelernt
-move("Hallo", "Junk", "Kein-Spam")
+wait("Lernordner: als Spam gelernt und in den Spam-Ordner verschoben",
+     lambda: "Hallo" in subjects("Spamverdacht") and any("als Spam gelernt" in a for a in log()))  # lange Mail: wirklich gelernt
+move("Hallo", "Spamverdacht", "Kein-Spam")
 wait("Lernordner: als kein Spam gelernt und zurück in den Posteingang",
      lambda: "Hallo" in subjects("INBOX") and any("als kein Spam gelernt" in a for a in log()))
 time.sleep(12)

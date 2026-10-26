@@ -18,7 +18,7 @@ public class Account
     // ponytail: Klartext in der sqlite-Datei, Schutz über Dateirechte von /data
     public string Password { get; set; } = "";
     public string Folder { get; set; } = "INBOX";
-    public string SpamFolder { get; set; } = "Junk";
+    public string SpamFolder { get; set; } = "";  // leer = automatisch
     public double Threshold { get; set; } = 6;
     public bool Enabled { get; set; } = true;
     public long? UidValidity { get; set; }

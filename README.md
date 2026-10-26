@@ -6,6 +6,10 @@ in den Spam-Ordner des Postfachs. Wirkt dadurch auf allen Geräten gleich. Ein D
 
 - **Sofort statt alle paar Minuten:** neue Mails meldet der Mailserver per IMAP IDLE.
 - **Mehrere Postfächer**, auch bei verschiedenen Anbietern, Spam-Schwelle je Postfach.
+- **Schnell eingerichtet:** E-Mail-Adresse eingeben, Server und Port werden erkannt – aus einer Liste gängiger
+  Anbieter (Gmail, GMX, WEB.DE, T-Online, Strato, IONOS, …) mit Hinweisen wie „App-Passwort nötig“, sonst per
+  Autodiscovery wie in Thunderbird (autoconfig, Thunderbird-Datenbank, DNS-SRV, Mailserver der Domain).
+  Den Spam-Ordner meldet der Server selbst (z. B. „Spamverdacht“ bei GMX, „[Gmail]/Spam“ bei Gmail).
 - **Trainieren per Verschieben** im Mailprogramm, auf jedem Gerät:
   - Mail nach **Spam-lernen** → wird als Spam gelernt und in den Spam-Ordner verschoben
   - Mail nach **Kein-Spam** → wird als kein Spam gelernt und zurück in den Posteingang verschoben
@@ -19,7 +23,8 @@ in den Spam-Ordner des Postfachs. Wirkt dadurch auf allen Geräten gleich. Ein D
 1. **Stacks → Add stack → Web editor**, Name `spamsharp`, Inhalt von [`docker-compose.yml`](docker-compose.yml) einfügen.
 2. Unten bei **Environment variables** `ADMIN_PASSWORD` setzen.
 3. **Deploy the stack**, dann `http://<server>:8083` öffnen (Benutzername beliebig, Passwort = `ADMIN_PASSWORD`).
-4. **+ Postfach hinzufügen**. „Verbindung testen“ zeigt die Ordner des Servers; ein Klick übernimmt den Spam-Ordner.
+4. **+ Postfach hinzufügen**, E-Mail-Adresse und Passwort eingeben. „Verbindung testen“ zeigt, ob alles passt
+   und wohin Spam verschoben wird.
 
 Daten liegen in `/opt/spamfilter` (legt Docker beim ersten Start an). Das ist auch das Backup.
 
@@ -48,6 +53,10 @@ Sehr kurze Mails überspringt rspamd beim Lernen.
 - Der Container startet als root, übernimmt `/data` und läuft dann als Benutzer `_rspamd`.
 
 ## Grenzen
+
+- Outlook, Hotmail und Microsoft 365 erlauben keine IMAP-Anmeldung per Passwort mehr und werden nicht unterstützt.
+- Autodiscovery fragt mit der Domain (nicht der Adresse) die Thunderbird-Datenbank `autoconfig.thunderbird.net` ab.
+  Fehlersuche: `docker exec spamsharp /app/SpamSharp --discover name@domain.de`
 
 - rspamd sieht die Mails erst nach der Zustellung. Prüfungen der Absender-IP (SPF, IP-Blocklisten) entfallen
   weitgehend – die macht der Mailanbieter bereits.

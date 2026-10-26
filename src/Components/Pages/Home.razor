@@ -33,7 +33,7 @@ else
                     <tr>
                         <td><a href="account/@a.Id">@a.Name</a>@if (!a.Enabled){<span class="badge">aus</span>}</td>
                         <td>@a.Username<br /><small class="muted">@a.Host:@a.Port</small></td>
-                        <td>@a.Folder → @a.SpamFolder</td>
+                        <td>@a.Folder → @(a.SpamFolder is "" ? "Spam (automatisch)" : a.SpamFolder)</td>
                         <td class="num">@a.Threshold</td>
                         <td><small class="muted">@a.LastRun</small><br /><span class="@(IsError(a.Status) ? "err" : "")">@a.Status</span></td>
                         <td class="actions">

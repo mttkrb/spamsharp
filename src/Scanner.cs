@@ -99,7 +99,7 @@ public class Scanner(ILogger<Scanner> log) : BackgroundService
     static async Task<string> Process(ImapClient imap, Account acc, CancellationToken ct)
     {
         var inbox = await imap.GetFolderAsync(acc.Folder, ct);
-        var spamFolder = await Folder(imap, acc.SpamFolder, ct);
+        var spamFolder = await SpamFolder(imap, acc, ct);
         var learned = await LearnFolder(imap, acc, Settings.Get("learn_spam"), true, spamFolder, ct)
                     + await LearnFolder(imap, acc, Settings.Get("learn_ham"), false, inbox, ct);
 
@@ -185,8 +185,22 @@ public class Scanner(ILogger<Scanner> log) : BackgroundService
         return items.Count;
     }
 
-    // Ordner suchen (auch unterhalb von "INBOX." bei solchen Servern), sonst anlegen und abonnieren
-    static async Task<IMailFolder> Folder(ImapClient imap, string path, CancellationToken ct)
+    // Spam-Ordner: eingetragener Name, sonst der vom Server gemeldete (SPECIAL-USE \Junk), sonst übliche Namen
+    static async Task<IMailFolder> SpamFolder(ImapClient imap, Account acc, CancellationToken ct) =>
+        acc.SpamFolder != "" ? await Folder(imap, acc.SpamFolder, ct)
+                             : await DetectSpam(imap, ct) ?? await Folder(imap, "Junk", ct);
+
+    static async Task<IMailFolder?> DetectSpam(ImapClient imap, CancellationToken ct)
+    {
+        if (imap.Capabilities.HasFlag(ImapCapabilities.SpecialUse) || imap.Capabilities.HasFlag(ImapCapabilities.XList))
+            if (imap.GetFolder(SpecialFolder.Junk) is { } junk) return junk;
+        foreach (var name in new[] { "Spam", "Junk", "Spamverdacht", "Junk-E-Mail", "Junk E-mail", "[Gmail]/Spam" })
+            if (await Find(imap, name, ct) is { } f) return f;
+        return null;
+    }
+
+    // Ordner suchen (auch unterhalb von "INBOX." bei solchen Servern)
+    static async Task<IMailFolder?> Find(ImapClient imap, string path, CancellationToken ct)
     {
         var ns = imap.PersonalNamespaces[0];
         var candidates = new[] { path, ns.Path == "" ? path : ns.Path + ns.DirectorySeparator + path };
@@ -195,6 +209,14 @@ public class Scanner(ILogger<Scanner> log) : BackgroundService
             try { return await imap.GetFolderAsync(p, ct); }
             catch (FolderNotFoundException) { }
         }
+        return null;
+    }
+
+    // Ordner suchen, sonst anlegen und abonnieren
+    static async Task<IMailFolder> Folder(ImapClient imap, string path, CancellationToken ct)
+    {
+        if (await Find(imap, path, ct) is { } found) return found;
+        var ns = imap.PersonalNamespaces[0];
         // ponytail: legt nur Ordner direkt unter der Wurzel an; verschachtelte Namen vorher im Mailprogramm anlegen
         var created = await imap.GetFolder(ns).CreateAsync(path, true, ct)
                       ?? throw new InvalidOperationException($"Ordner „{path}“ konnte nicht angelegt werden");
@@ -213,11 +235,13 @@ public class Scanner(ILogger<Scanner> log) : BackgroundService
         return ms.ToArray();
     }
 
-    public static async Task<List<string>> Folders(Account a)
+    // Für „Verbindung testen“: alle Ordner und der Spam-Ordner, den der Scanner verwenden würde
+    public static async Task<(List<string> Folders, string Spam)> Folders(Account a)
     {
         using var imap = await Connect(a, default);
         var list = await imap.GetFoldersAsync(imap.PersonalNamespaces[0]);
-        return list.Select(f => f.FullName).Order().ToList();
+        var spam = a.SpamFolder != "" ? a.SpamFolder : (await DetectSpam(imap, default))?.FullName ?? "Junk (wird angelegt)";
+        return (list.Select(f => f.FullName).Order().ToList(), spam);
     }
 
     // Einmaliges Anlernen mit vorhandenen Mails (verschiebt nichts)
@@ -228,7 +252,7 @@ public class Scanner(ILogger<Scanner> log) : BackgroundService
         try
         {
             using var imap = await Connect(acc, stopping);
-            var f = await Folder(imap, spam ? acc.SpamFolder : acc.Folder, stopping);
+            var f = spam ? await SpamFolder(imap, acc, stopping) : await Folder(imap, acc.Folder, stopping);
             await f.OpenAsync(FolderAccess.ReadOnly, stopping);
             // kein Spam: nur Mails älter als 7 Tage, die hat der Nutzer schon gesehen
             var uids = await f.SearchAsync(spam ? SearchQuery.All : SearchQuery.DeliveredBefore(DateTime.Now.AddDays(-7)), stopping);
