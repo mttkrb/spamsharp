@@ -22,7 +22,7 @@ in den Spam-Ordner des Postfachs. Wirkt dadurch auf allen Geräten gleich. Ein D
 
 1. **Stacks → Add stack → Web editor**, Name `spamsharp`, Inhalt von [`docker-compose.yml`](docker-compose.yml) einfügen.
 2. Unten bei **Environment variables** `ADMIN_PASSWORD` setzen.
-3. **Deploy the stack**, dann `http://<server>:8083` öffnen (Passwort = `ADMIN_PASSWORD`).
+3. **Deploy the stack**, dann `http://<server>:8083` öffnen (Benutzer `admin`, Passwort = `ADMIN_PASSWORD`). Weitere Benutzer legt admin unter **Einstellungen** an; jeder sieht nur seine eigenen Postfächer, gelernt wird gemeinsam, Regeln und Einstellungen ändert nur admin.
 4. **+ Postfach hinzufügen**, E-Mail-Adresse und Passwort eingeben. „Verbindung testen“ zeigt, ob alles passt
    und wohin Spam verschoben wird.
 

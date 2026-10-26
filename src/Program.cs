@@ -1,4 +1,5 @@
 using System.Security.Cryptography;
+using System.Net;
 using System.Text;
 using System.Security.Claims;
 using Microsoft.AspNetCore.Authentication;
@@ -20,6 +21,7 @@ if (string.IsNullOrEmpty(adminPassword))
     Console.Error.WriteLine("ADMIN_PASSWORD muss gesetzt sein.");
     return 1;
 }
+Users.AdminPassword = adminPassword;
 foreach (var dir in new[] { "", "redis", "rspamd", "keys" })
     Directory.CreateDirectory(Path.Combine(Paths.Data, dir));
 Db.Init(Path.Combine(Paths.Data, "spamsharp.db"));
@@ -31,7 +33,19 @@ builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationSc
 {
     o.Cookie.Name = "spamsharp";
     o.ExpireTimeSpan = TimeSpan.FromDays(30);
+    o.LoginPath = "/login";
+    o.AccessDeniedPath = "/";  // Nicht-Admin ruft Regeln/Einstellungen direkt auf
+    o.Events.OnValidatePrincipal = async c =>
+    {
+        if (c.Principal?.FindFirst("stamp")?.Value != Users.Stamp(c.Principal?.Identity?.Name))
+        {
+            c.RejectPrincipal();
+            await c.HttpContext.SignOutAsync();
+        }
+    };
 });
+builder.Services.AddAuthorization();
+builder.Services.AddCascadingAuthenticationState();
 builder.Services.AddSingleton<Scanner>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<Scanner>());
 builder.Services.AddHostedService<Daemons>();
@@ -39,7 +53,6 @@ builder.Services.AddHostedService<Daemons>();
 var app = builder.Build();
 app.UseExceptionHandler("/Error", createScopeForErrors: true);
 
-var expected = Encoding.UTF8.GetBytes(adminPassword);
 app.Use(async (ctx, next) =>
 {
     // Anfragen fremder Webseiten ablehnen (CSRF, auch für die Blazor-WebSocket-Verbindung und das Login-Formular)
@@ -52,6 +65,7 @@ app.Use(async (ctx, next) =>
     await next();
 });
 app.UseAuthentication();
+app.UseAuthorization();
 app.Use(async (ctx, next) =>
 {
     if (ctx.User.Identity?.IsAuthenticated == true || ctx.Request.Path == "/login" || ctx.Request.Path == "/app.css")
@@ -60,16 +74,19 @@ app.Use(async (ctx, next) =>
         ctx.Response.Redirect("/login");
 });
 
-app.MapGet("/login", () => LoginPage(null));
+app.MapGet("/login", () => LoginPage("", null));
 app.MapPost("/login", async (HttpContext ctx) =>
 {
     var form = await ctx.Request.ReadFormAsync();
-    if (!CryptographicOperations.FixedTimeEquals(Encoding.UTF8.GetBytes(form["password"].ToString()), expected))
+    var entered = form["user"].ToString().Trim();
+    if (Users.Login(entered, form["password"].ToString()) is not { } name)
     {
         await Task.Delay(1000); // bremst Durchprobieren
-        return LoginPage("Falsches Passwort.");
+        return LoginPage(entered, "Benutzername oder Passwort falsch.");
     }
-    var identity = new ClaimsIdentity([new Claim(ClaimTypes.Name, "admin")], CookieAuthenticationDefaults.AuthenticationScheme);
+    List<Claim> claims = [new(ClaimTypes.Name, name), new("stamp", Users.Stamp(name)!)];
+    if (name == Users.Admin) claims.Add(new(ClaimTypes.Role, Users.Admin));
+    var identity = new ClaimsIdentity(claims, CookieAuthenticationDefaults.AuthenticationScheme);
     await ctx.SignInAsync(new ClaimsPrincipal(identity), new AuthenticationProperties { IsPersistent = true });
     return Results.Redirect("/");
 }).DisableAntiforgery();
@@ -85,7 +102,7 @@ app.MapRazorComponents<App>().AddInteractiveServerRenderMode();
 app.Run();
 return 0;
 
-static IResult LoginPage(string? error) => Results.Content($$"""
+static IResult LoginPage(string user, string? error) => Results.Content($$"""
     <!DOCTYPE html>
     <html lang="de">
     <head>
@@ -98,7 +115,8 @@ static IResult LoginPage(string? error) => Results.Content($$"""
     <body class="login">
         <form method="post" action="/login" class="form card">
             <h1>📬 SpamSharp</h1>
-            <label>Passwort <input type="password" name="password" autocomplete="current-password" autofocus required /></label>
+            <label>Benutzername <input name="user" value="{{WebUtility.HtmlEncode(user)}}" autocomplete="username" autocapitalize="none" required {{(user == "" ? "autofocus" : "")}} /></label>
+            <label>Passwort <input type="password" name="password" autocomplete="current-password" required {{(user == "" ? "" : "autofocus")}} /></label>
             {{(error is null ? "" : $"<p class=\"err\" role=\"alert\">{error}</p>")}}
             <button class="primary">Anmelden</button>
         </form>

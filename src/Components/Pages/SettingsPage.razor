@@ -1,4 +1,5 @@
 @page "/settings"
+@attribute [Authorize(Roles = Users.Admin)]
 @inject Scanner Scanner
 
 <PageTitle>Einstellungen – SpamSharp</PageTitle>
@@ -16,10 +17,74 @@
     <div class="row"><button class="primary" @onclick="Save">Speichern</button></div>
 </div>
 
+<h2>Benutzer</h2>
+<p class="muted">
+    Jeder Benutzer sieht nur seine eigenen Postfächer. Gelernt wird gemeinsam, Regeln und Einstellungen ändert nur „admin“
+    (Passwort über ADMIN_PASSWORD).
+</p>
+@if (users.Count > 0)
+{
+    <div class="scroll users">
+        <table>
+            <tbody>
+                @foreach (var u in users)
+                {
+                    <tr>
+                        <td>@u</td>
+                        <td class="actions">
+                            <button class="danger" @onclick="() => DeleteUser(u)">@(confirmDelete == u ? "Wirklich löschen (mit Postfächern)?" : "Löschen")</button>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}
+<div class="form">
+    <label>Benutzername <input @bind="newUser" autocomplete="off" autocapitalize="none" /></label>
+    <label>Passwort <small>mind. 8 Zeichen; bei vorhandenem Benutzer wird das Passwort ersetzt</small>
+        <input type="password" @bind="newPassword" autocomplete="new-password" /></label>
+    @if (userMessage is not null)
+    {
+        <p class="@(userOk ? "ok" : "err")">@userMessage</p>
+    }
+    <div class="row"><button class="primary" @onclick="SaveUser">Benutzer speichern</button></div>
+</div>
+
 @code {
     readonly Dictionary<string, string> values = Settings.All.Keys.ToDictionary(k => k, Settings.Get);
     string? message;
     bool saved;
+    List<string> users = Users.All();
+    string newUser = "", newPassword = "";
+    string? userMessage, confirmDelete;
+    bool userOk;
+
+    void SaveUser()
+    {
+        var name = newUser.Trim();
+        (userOk, userMessage) = name switch
+        {
+            "" => (false, "Bitte einen Benutzernamen eingeben."),
+            _ when name.Equals(Users.Admin, StringComparison.OrdinalIgnoreCase) => (false, "„admin“ ist reserviert."),
+            _ when newPassword.Length < 8 => (false, "Das Passwort braucht mindestens 8 Zeichen."),
+            _ => (true, $"Benutzer „{name}“ gespeichert."),
+        };
+        if (!userOk) return;
+        Users.Save(name, newPassword);
+        (newUser, newPassword, users) = ("", "", Users.All());
+    }
+
+    void DeleteUser(string name)
+    {
+        if (confirmDelete != name)
+        {
+            confirmDelete = name;
+            return;
+        }
+        foreach (var id in Users.Delete(name)) Scanner.Restart(id);
+        (confirmDelete, users, userOk, userMessage) = (null, Users.All(), true, $"Benutzer „{name}“ gelöscht.");
+    }
 
     void Save()
     {
