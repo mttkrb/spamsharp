@@ -7,6 +7,7 @@ RUN dotnet publish -c Release -r linux-x64 --self-contained -o /out
 
 # rspamd-Image als Basis; redis und die App kommen dazu, alles in einem Container
 FROM rspamd/rspamd:latest
+LABEL org.opencontainers.image.source=https://github.com/mttkrb/spamsharp
 USER root
 RUN apt-get update && apt-get install -y --no-install-recommends redis-server \
  && rm -rf /var/lib/apt/lists/* \
