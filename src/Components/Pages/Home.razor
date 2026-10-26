@@ -39,6 +39,7 @@ else
                         <td class="actions">
                             <button @onclick="() => Toggle(a)">@(a.Enabled ? "Pause" : "Weiter")</button>
                             <button @onclick="() => Scanner.Restart(a.Id)" disabled="@(!a.Enabled)">Jetzt prüfen</button>
+                            <button @onclick="() => Rescan(a)" disabled="@(!a.Enabled)" title="Die letzten @Settings.Get("first_scan") Mails im Posteingang erneut prüfen (z. B. damit sie wieder Spam/Ham-Knöpfe bekommen)">Neu prüfen</button>
                             <button @onclick="() => Scanner.Train(a.Id, true)" title="Alle Mails im Spam-Ordner als Spam lernen">Spam lernen</button>
                             <button @onclick="() => Scanner.Train(a.Id, false)" title="Posteingangs-Mails älter als 7 Tage als kein Spam lernen">Ham lernen</button>
                         </td>
@@ -134,6 +135,14 @@ else
     {
         Db.Exec("update accounts set enabled=@on where id=@Id", new { on = !a.Enabled, a.Id });
         Db.Status(a.Id, a.Enabled ? "pausiert" : "startet …");
+        Scanner.Restart(a.Id);
+        await Load();
+    }
+
+    // Prüfstand zurücksetzen: der nächste Lauf prüft wie beim ersten Mal die letzten „first_scan“ Mails
+    async Task Rescan(Account a)
+    {
+        Db.Exec("update accounts set uidvalidity=null, lastuid=0 where id=@Id", new { a.Id });
         Scanner.Restart(a.Id);
         await Load();
     }
