@@ -1,0 +1,14 @@
+# SpamSharp – in Portainer: Stacks > Add stack > Web editor > diese Datei einfügen,
+# unten bei "Environment variables" ADMIN_PASSWORD setzen.
+services:
+  spamsharp:
+    image: ghcr.io/mttkrb/spamsharp:latest
+    container_name: spamsharp
+    restart: unless-stopped
+    environment:
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:?ADMIN_PASSWORD setzen}
+      TZ: Europe/Berlin
+    volumes:
+      - /opt/spamfilter:/data   # Postfächer, Log, gelernte Daten, Regelgewichte
+    ports:
+      - "8083:8080"

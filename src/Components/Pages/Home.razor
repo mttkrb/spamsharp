@@ -1,0 +1,124 @@
+﻿@page "/"
+@implements IDisposable
+@inject Scanner Scanner
+
+<PageTitle>SpamSharp</PageTitle>
+
+<div class="tiles">
+    <div class="tile"><b>@Counter("stat_checked")</b><span>Mails geprüft</span></div>
+    <div class="tile"><b>@Counter("stat_spam")</b><span>als Spam verschoben</span></div>
+    <div class="tile">
+        <b>@bayesSpam / @bayesHam</b>
+        <span>gelernt: Spam / kein Spam<br />@(bayesSpam >= 200 && bayesHam >= 200 ? "Bayes-Filter aktiv" : "Bayes-Filter aktiv ab je 200")</span>
+    </div>
+    <div class="tile"><b class="@(rspamdOk ? "ok" : "err")">@(rspamdOk ? "läuft" : "startet …")</b><span>rspamd</span></div>
+</div>
+
+<div class="head">
+    <h2>Postfächer</h2>
+    <a class="btn primary" href="account">+ Postfach hinzufügen</a>
+</div>
+@if (accounts.Count == 0)
+{
+    <p class="muted">Noch kein Postfach angelegt.</p>
+}
+else
+{
+    <div class="scroll">
+        <table>
+            <thead><tr><th>Name</th><th>Zugang</th><th>Ordner</th><th class="num">Schwelle</th><th>Status</th><th></th></tr></thead>
+            <tbody>
+                @foreach (var a in accounts)
+                {
+                    <tr>
+                        <td><a href="account/@a.Id">@a.Name</a>@if (!a.Enabled){<span class="badge">aus</span>}</td>
+                        <td>@a.Username<br /><small class="muted">@a.Host:@a.Port</small></td>
+                        <td>@a.Folder → @a.SpamFolder</td>
+                        <td class="num">@a.Threshold</td>
+                        <td><small class="muted">@a.LastRun</small><br /><span class="@(IsError(a.Status) ? "err" : "")">@a.Status</span></td>
+                        <td class="actions">
+                            <button @onclick="() => Scanner.Restart(a.Id)" disabled="@(!a.Enabled)">Jetzt prüfen</button>
+                            <button @onclick="() => Scanner.Train(a.Id, true)" title="Alle Mails im Spam-Ordner als Spam lernen">Spam lernen</button>
+                            <button @onclick="() => Scanner.Train(a.Id, false)" title="Posteingangs-Mails älter als 7 Tage als kein Spam lernen">Ham lernen</button>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+    <p class="muted hint">
+        Im Mailprogramm trainieren (auf jedem Gerät): Mail nach „@Settings.Get("learn_spam")“ verschieben = Spam,
+        nach „@Settings.Get("learn_ham")“ = kein Spam. Aus dem Spam-Ordner zurückgeholte Mails werden ebenfalls als kein Spam gelernt.
+    </p>
+}
+
+<div class="head">
+    <h2>Letzte Mails</h2>
+    <label class="check"><input type="checkbox" @bind="onlySpam" @bind:after="Load" /> nur Spam</label>
+</div>
+<div class="scroll">
+    <table class="log">
+        <thead><tr><th>Zeit</th><th>Postfach</th><th>Von</th><th>Betreff</th><th class="num">Score</th><th>Ergebnis</th></tr></thead>
+        <tbody>
+            @foreach (var l in log)
+            {
+                <tr class="@(l.Action.StartsWith("Spam") ? "spam" : "")">
+                    <td class="nowrap">@l.Ts</td>
+                    <td>@l.Account</td>
+                    <td>@l.Sender</td>
+                    <td>@if (l.Symbols is null){@(l.Subject ?? "(kein Betreff)")}else{<a href="mail/@l.Id">@(l.Subject ?? "(kein Betreff)")</a>}</td>
+                    <td class="num">@l.Score?.ToString("0.0")</td>
+                    <td>@l.Action</td>
+                </tr>
+            }
+        </tbody>
+    </table>
+</div>
+@if (log.Count == 0)
+{
+    <p class="muted">Noch keine Mails geprüft.</p>
+}
+
+@code {
+    List<Account> accounts = [];
+    List<LogEntry> log = [];
+    bool onlySpam, rspamdOk;
+    long bayesSpam, bayesHam;
+    PeriodicTimer? timer;
+
+    protected override Task OnInitializedAsync() => Load();
+
+    protected override void OnAfterRender(bool firstRender)
+    {
+        if (!firstRender) return;
+        // Live-Aktualisierung alle 3 Sekunden
+        timer = new PeriodicTimer(TimeSpan.FromSeconds(3));
+        _ = Task.Run(async () =>
+        {
+            while (await timer.WaitForNextTickAsync())
+                await InvokeAsync(async () => { await Load(); StateHasChanged(); });
+        });
+    }
+
+    async Task Load()
+    {
+        accounts = Db.Accounts();
+        log = Db.Query<LogEntry>("select * from log " + (onlySpam ? "where action like 'Spam%' " : "") + "order by id desc limit 200");
+        try
+        {
+            var files = (await Rspamd.Stat())?["statfiles"]?.AsArray() ?? [];
+            long Learned(string symbol) => files.FirstOrDefault(f => f?["symbol"]?.GetValue<string>() == symbol)?["revision"]?.GetValue<long>() ?? 0;
+            (bayesSpam, bayesHam, rspamdOk) = (Learned("BAYES_SPAM"), Learned("BAYES_HAM"), true);
+        }
+        catch
+        {
+            rspamdOk = false;
+        }
+    }
+
+    static string Counter(string key) => Db.Query<string>("select value from settings where key=@key", new { key }).FirstOrDefault() ?? "0";
+
+    static bool IsError(string? status) => status?.StartsWith("Fehler") == true || status?.StartsWith("Training fehl") == true;
+
+    public void Dispose() => timer?.Dispose();
+}

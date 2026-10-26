@@ -1,0 +1,86 @@
+@page "/rules"
+
+<PageTitle>Regeln – SpamSharp</PageTitle>
+
+<h2>Regeln</h2>
+<p class="muted">
+    Gewichte der rspamd-Regeln. Positiv spricht für Spam, negativ dagegen.
+    Änderungen gelten sofort für alle Postfächer und bleiben über Neustarts erhalten.
+</p>
+
+<div class="row">
+    <input class="search" placeholder="Suchen (Name, Gruppe oder Beschreibung)" @bind="Q" @bind:event="oninput" />
+    <button class="primary" @onclick="Save" disabled="@(changed.Count == 0)">@changed.Count Änderung(en) speichern</button>
+</div>
+@if (message is not null)
+{
+    <p class="@(message.StartsWith("Fehler") ? "err" : "ok")">@message</p>
+}
+
+@if (rules is null)
+{
+    <p class="muted">Lade … (rspamd startet eventuell noch)</p>
+}
+else
+{
+    var hits = rules.Where(Matches).ToList();
+    <div class="scroll">
+        <table>
+            <thead><tr><th>Regel</th><th>Beschreibung</th><th class="num">Gewicht</th></tr></thead>
+            <tbody>
+                @foreach (var r in hits.Take(MaxRows))
+                {
+                    <tr class="@(changed.ContainsKey(r.Name) ? "changed" : "")">
+                        <td>@r.Name<br /><small class="muted">@r.Group</small></td>
+                        <td>@r.Description</td>
+                        <td class="num">
+                            <input class="weight" type="number" step="0.1"
+                                   value="@(changed.TryGetValue(r.Name, out var w) ? w : r.Weight)"
+                                   @onchange="e => Change(r, e.Value)" />
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+    <p class="muted">@hits.Count von @rules.Count Regeln@(hits.Count > MaxRows ? $", die ersten {MaxRows} angezeigt – Suche verfeinern" : "")</p>
+}
+
+@code {
+    const int MaxRows = 300;
+    [SupplyParameterFromQuery(Name = "q")] public string? Q { get; set; }
+    List<Rule>? rules;
+    readonly Dictionary<string, double> changed = [];
+    string? message;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try { rules = await Rspamd.Rules(); }
+        catch (Exception e) { message = "Fehler: rspamd nicht erreichbar (" + e.Message + ")"; }
+    }
+
+    bool Matches(Rule r) => string.IsNullOrWhiteSpace(Q)
+        || $"{r.Name} {r.Group} {r.Description}".Contains(Q.Trim(), StringComparison.OrdinalIgnoreCase);
+
+    void Change(Rule r, object? value)
+    {
+        if (!double.TryParse(value?.ToString(), System.Globalization.CultureInfo.InvariantCulture, out var w)) return;
+        if (w == r.Weight) changed.Remove(r.Name);
+        else changed[r.Name] = w;
+    }
+
+    async Task Save()
+    {
+        try
+        {
+            await Rspamd.SaveWeights(changed);
+            message = $"{changed.Count} Gewicht(e) gespeichert.";
+            changed.Clear();
+            rules = await Rspamd.Rules();
+        }
+        catch (Exception e)
+        {
+            message = "Fehler: " + e.Message;
+        }
+    }
+}

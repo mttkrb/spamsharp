@@ -1,0 +1,50 @@
+@page "/mail/{Id:long}"
+@using System.Text.Json
+
+<PageTitle>Mail – SpamSharp</PageTitle>
+
+@if (entry is null)
+{
+    <p>Eintrag nicht gefunden (ältere Einträge werden gelöscht).</p>
+}
+else
+{
+    <h2>@(entry.Subject ?? "(kein Betreff)")</h2>
+    <dl class="meta">
+        <dt>Von</dt><dd>@entry.Sender</dd>
+        <dt>Postfach</dt><dd>@entry.Account</dd>
+        <dt>Geprüft</dt><dd>@entry.Ts</dd>
+        <dt>Score</dt><dd>@entry.Score?.ToString("0.00")</dd>
+        <dt>Ergebnis</dt><dd>@entry.Action</dd>
+    </dl>
+
+    <h3>Warum? Treffer der rspamd-Regeln</h3>
+    <div class="scroll">
+        <table>
+            <thead><tr><th>Regel</th><th class="num">Punkte</th><th>Beschreibung</th></tr></thead>
+            <tbody>
+                @foreach (var s in symbols)
+                {
+                    <tr>
+                        <td><a href="rules?q=@Uri.EscapeDataString(s.Name)">@s.Name</a></td>
+                        <td class="num @(s.Score > 0 ? "err" : s.Score < 0 ? "ok" : "muted")">@s.Score.ToString("+0.00;-0.00;0")</td>
+                        <td>@s.Description @if (s.Options is { Length: > 0 }){<br /><small class="muted">@s.Options</small>}</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}
+<p><a href="">← Zurück</a></p>
+
+@code {
+    [Parameter] public long Id { get; set; }
+    LogEntry? entry;
+    List<Symbol> symbols = [];
+
+    protected override void OnParametersSet()
+    {
+        entry = Db.Query<LogEntry>("select * from log where id=@Id", new { Id }).FirstOrDefault();
+        symbols = entry?.Symbols is { } json ? JsonSerializer.Deserialize<List<Symbol>>(json) ?? [] : [];
+    }
+}

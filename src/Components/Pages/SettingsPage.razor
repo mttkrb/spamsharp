@@ -1,0 +1,39 @@
+@page "/settings"
+@inject Scanner Scanner
+
+<PageTitle>Einstellungen – SpamSharp</PageTitle>
+
+<h2>Einstellungen</h2>
+<div class="form">
+    @foreach (var (key, def) in Settings.All)
+    {
+        <label>@def.Label <input @bind="values[key]" inputmode="@(def.Numeric ? "numeric" : "text")" /></label>
+    }
+    @if (message is not null)
+    {
+        <p class="@(saved ? "ok" : "err")">@message</p>
+    }
+    <div class="row"><button class="primary" @onclick="Save">Speichern</button></div>
+</div>
+
+@code {
+    readonly Dictionary<string, string> values = Settings.All.Keys.ToDictionary(k => k, Settings.Get);
+    string? message;
+    bool saved;
+
+    void Save()
+    {
+        var bad = Settings.All.Where(s => s.Value.Numeric && !(int.TryParse(values[s.Key], out var n) && n > 0))
+                              .Select(s => s.Value.Label).FirstOrDefault();
+        var empty = values.Any(v => v.Value.Trim() == "");
+        (saved, message) = (bad, empty) switch
+        {
+            ({ } label, _) => (false, $"Bitte eine positive Zahl eintragen: {label}"),
+            (_, true) => (false, "Bitte alle Felder ausfüllen."),
+            _ => (true, "Gespeichert."),
+        };
+        if (!saved) return;
+        foreach (var (k, v) in values) Settings.Set(k, v.Trim());
+        Scanner.RestartAll();
+    }
+}

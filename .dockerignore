@@ -1,0 +1,6 @@
+**/bin
+**/obj
+.git
+*.tar.gz
+.env
+test/

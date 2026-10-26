@@ -1,0 +1,37 @@
+# Testet und baut das Image, legt es in der GitHub Container Registry ab: ghcr.io/<nutzer>/<repo>:latest
+# Wöchentlich neu, damit Updates des rspamd-Basisimages ankommen. Pull Requests werden nur getestet.
+name: Test und Image
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    - cron: "17 3 * * 1"   # montags 03:17 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Basisimage aktualisieren
+        run: docker pull rspamd/rspamd:latest
+
+      - name: End-to-end-Test (baut das Image)
+        run: sh test/e2e.sh
+
+      - name: Image veröffentlichen
+        if: github.event_name != 'pull_request'
+        run: |
+          IMAGE=ghcr.io/${GITHUB_REPOSITORY,,}
+          echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+          for TAG in latest "$(date +%Y-%m-%d)" "${GITHUB_SHA::7}"; do
+            docker tag spamsharp:test "$IMAGE:$TAG"
+            docker push -q "$IMAGE:$TAG"
+          done

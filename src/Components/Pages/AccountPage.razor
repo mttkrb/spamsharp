@@ -1,0 +1,133 @@
+@page "/account/{Id:long?}"
+@inject Scanner Scanner
+@inject NavigationManager Nav
+
+<PageTitle>Postfach – SpamSharp</PageTitle>
+
+<h2>@(Id is null ? "Neues Postfach" : "Postfach bearbeiten")</h2>
+
+<EditForm Model="acc" OnSubmit="Save" class="form">
+    <label>Name <InputText @bind-Value="acc.Name" placeholder="z. B. Privat" /></label>
+    <label>IMAP-Server <InputText @bind-Value="acc.Host" placeholder="z. B. imap.gmx.net" /></label>
+    <label>Port <small>143 = STARTTLS, sonst SSL/TLS (meist 993)</small> <InputNumber @bind-Value="acc.Port" /></label>
+    <label>Benutzer <InputText @bind-Value="acc.Username" autocomplete="off" /></label>
+    <label>
+        Passwort @if (Id is not null){<small>leer lassen = unverändert</small>}
+        <InputText type="password" @bind-Value="password" autocomplete="new-password" />
+    </label>
+    <label>Zu prüfender Ordner <InputText @bind-Value="acc.Folder" /></label>
+    <label>Spam-Ordner <small>wird angelegt, falls nicht vorhanden</small> <InputText @bind-Value="acc.SpamFolder" /></label>
+    <label>Spam ab Score <small>rspamd-Standard 6, niedriger = strenger</small> <InputNumber @bind-Value="acc.Threshold" step="0.5" /></label>
+    <label class="check"><InputCheckbox @bind-Value="acc.Enabled" /> aktiv</label>
+
+    @if (error is not null)
+    {
+        <p class="err">@error</p>
+    }
+    <div class="row">
+        <button type="submit" class="primary">Speichern</button>
+        <button type="button" @onclick="Test" disabled="@testing">@(testing ? "Teste …" : "Verbindung testen")</button>
+        @if (Id is not null)
+        {
+            <button type="button" class="danger" @onclick="Delete">@(confirmDelete ? "Wirklich löschen?" : "Löschen")</button>
+        }
+        <a href="">Abbrechen</a>
+    </div>
+</EditForm>
+
+@if (testResult is not null)
+{
+    <p class="@(folders is null ? "err" : "ok")">@testResult</p>
+}
+@if (folders is not null)
+{
+    <h3>Ordner auf dem Server</h3>
+    <p class="muted">Klick übernimmt den Ordner als Spam-Ordner.</p>
+    <ul class="folders">
+        @foreach (var f in folders)
+        {
+            <li><button type="button" class="link" @onclick="() => acc.SpamFolder = f">@f</button></li>
+        }
+    </ul>
+}
+
+@code {
+    [Parameter] public long? Id { get; set; }
+    Account acc = new();
+    string password = "";
+    string? error, testResult;
+    List<string>? folders;
+    bool testing, confirmDelete;
+
+    protected override void OnParametersSet()
+    {
+        if (Id is long id)
+        {
+            var found = Db.Account(id);
+            if (found is null) Nav.NavigateTo("");
+            else acc = found;
+        }
+    }
+
+    void Save()
+    {
+        acc.Name = acc.Name.Trim();
+        acc.Host = acc.Host.Trim();
+        acc.Username = acc.Username.Trim();
+        acc.Folder = acc.Folder.Trim() is "" ? "INBOX" : acc.Folder.Trim();
+        acc.SpamFolder = acc.SpamFolder.Trim() is "" ? "Junk" : acc.SpamFolder.Trim();
+        if (password != "") acc.Password = password;
+        error = acc switch
+        {
+            { Name: "" } or { Host: "" } or { Username: "" } => "Name, Server und Benutzer sind Pflichtfelder.",
+            { Password: "" } => "Passwort fehlt.",
+            { Port: < 1 or > 65535 } => "Ungültiger Port.",
+            _ => null,
+        };
+        if (error is not null) return;
+
+        if (Id is null)
+            acc.Id = Db.Query<long>("""
+                insert into accounts(name,host,port,username,password,folder,spamfolder,threshold,enabled)
+                values(@Name,@Host,@Port,@Username,@Password,@Folder,@SpamFolder,@Threshold,@Enabled) returning id
+                """, acc).Single();
+        else
+            // anderes Postfach/Ordner: wieder bei den letzten Mails anfangen
+            Db.Exec("""
+                update accounts set uidvalidity = case when host=@Host and username=@Username and folder=@Folder then uidvalidity end,
+                  name=@Name, host=@Host, port=@Port, username=@Username, password=@Password, folder=@Folder,
+                  spamfolder=@SpamFolder, threshold=@Threshold, enabled=@Enabled
+                where id=@Id
+                """, acc);
+        Scanner.Restart(acc.Id);
+        Nav.NavigateTo("");
+    }
+
+    async Task Test()
+    {
+        (testing, testResult, folders) = (true, null, null);
+        var probe = new Account { Host = acc.Host.Trim(), Port = acc.Port, Username = acc.Username.Trim(), Password = password != "" ? password : acc.Password };
+        try
+        {
+            folders = await Scanner.Folders(probe);
+            testResult = "Verbindung OK.";
+        }
+        catch (Exception e)
+        {
+            testResult = "Fehler: " + e.Message;
+        }
+        testing = false;
+    }
+
+    void Delete()
+    {
+        if (!confirmDelete)
+        {
+            confirmDelete = true;
+            return;
+        }
+        Db.Exec("delete from accounts where id=@Id; delete from known where accountid=@Id", new { Id });
+        Scanner.Restart(Id!.Value);
+        Nav.NavigateTo("");
+    }
+}
