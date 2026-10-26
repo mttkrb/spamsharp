@@ -38,11 +38,15 @@ docker run -d --name spamsharp-test --network $NET -p 127.0.0.1:18083:8080 -v "$
 py() { docker run --rm -i --network $NET -v "$T/data:/data" python:3.13-slim python - "$@"; }
 
 echo "== Warten auf Weboberfläche"
-for i in $(seq 60); do curl -fs -o /dev/null -u x:$PW http://127.0.0.1:18083/ && break; sleep 1; done
-test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:18083/)" = 401
-test "$(curl -s -o /dev/null -w '%{http_code}' -u x:falsch http://127.0.0.1:18083/)" = 401
-test "$(curl -s -o /dev/null -w '%{http_code}' -u x:$PW -H 'Origin: http://evil.example' http://127.0.0.1:18083/)" = 403
-test "$(curl -s -o /dev/null -w '%{http_code}' -u x:$PW http://127.0.0.1:18083/_framework/blazor.web.js)" = 200
+U=http://127.0.0.1:18083
+for i in $(seq 60); do curl -fs -o /dev/null $U/login && break; sleep 1; done
+test "$(curl -s -o /dev/null -w '%{http_code}' $U/)" = 302
+test "$(curl -s -o /dev/null -w '%{http_code}' $U/app.css)" = 200
+curl -s -d password=falsch $U/login | grep -q "Falsches Passwort"
+test "$(curl -s -o /dev/null -w '%{http_code}' -c "$T/jar" -d password=$PW $U/login)" = 302
+test "$(curl -s -o /dev/null -w '%{http_code}' -b "$T/jar" $U/)" = 200
+test "$(curl -s -o /dev/null -w '%{http_code}' -b "$T/jar" -H 'Origin: http://evil.example' $U/)" = 403
+test "$(curl -s -o /dev/null -w '%{http_code}' -b "$T/jar" $U/_framework/blazor.web.js)" = 200
 echo "   Login, Origin-Schutz und Blazor-Skript OK"
 
 echo "== Postfach anlegen, Mails einliefern"

@@ -22,7 +22,7 @@ in den Spam-Ordner des Postfachs. Wirkt dadurch auf allen Geräten gleich. Ein D
 
 1. **Stacks → Add stack → Web editor**, Name `spamsharp`, Inhalt von [`docker-compose.yml`](docker-compose.yml) einfügen.
 2. Unten bei **Environment variables** `ADMIN_PASSWORD` setzen.
-3. **Deploy the stack**, dann `http://<server>:8083` öffnen (Benutzername beliebig, Passwort = `ADMIN_PASSWORD`).
+3. **Deploy the stack**, dann `http://<server>:8083` öffnen (Passwort = `ADMIN_PASSWORD`).
 4. **+ Postfach hinzufügen**, E-Mail-Adresse und Passwort eingeben. „Verbindung testen“ zeigt, ob alles passt
    und wohin Spam verschoben wird.
 
@@ -44,7 +44,7 @@ Sehr kurze Mails überspringt rspamd beim Lernen.
 
 ## Sicherheit
 
-- Login per HTTP Basic Auth; Anfragen fremder Webseiten werden abgelehnt. Nur im eigenen Netz betreiben
+- Login über eigene Anmeldeseite (Cookie, 30 Tage); Anfragen fremder Webseiten werden abgelehnt. Nur im eigenen Netz betreiben
   oder hinter einen Reverse-Proxy mit HTTPS stellen.
 - IMAP-Passwörter liegen im Klartext in `/opt/spamfilter/spamsharp.db`. Ordner schützen, am besten App-Passwörter nutzen.
 - IMAP nur verschlüsselt: Port 143 mit STARTTLS, sonst SSL/TLS. Zertifikat und Hostname werden geprüft
