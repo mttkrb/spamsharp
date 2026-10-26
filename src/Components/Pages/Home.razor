@@ -56,9 +56,13 @@ else
     <h2>Letzte Mails</h2>
     <label class="check"><input type="checkbox" @bind="onlySpam" @bind:after="Load" /> nur Spam</label>
 </div>
+@if (markInfo is not null)
+{
+    <p class="@(markInfo.StartsWith("Fehler") ? "err" : "muted")">@markInfo</p>
+}
 <div class="scroll">
     <table class="log">
-        <thead><tr><th>Zeit</th><th>Postfach</th><th>Von</th><th>Betreff</th><th class="num">Score</th><th>Ergebnis</th></tr></thead>
+        <thead><tr><th>Zeit</th><th>Postfach</th><th>Von</th><th>Betreff</th><th class="num">Score</th><th>Ergebnis</th><th></th></tr></thead>
         <tbody>
             @foreach (var l in log)
             {
@@ -69,6 +73,13 @@ else
                     <td>@if (l.Symbols is null){@(l.Subject ?? "(kein Betreff)")}else{<a href="mail/@l.Id">@(l.Subject ?? "(kein Betreff)")</a>}</td>
                     <td class="num">@l.Score?.ToString("0.0")</td>
                     <td>@l.Action</td>
+                    <td class="actions nowrap">
+                        @if (l.MessageId is not null)
+                        {
+                            <button @onclick="() => Mark(l.Id, true)" disabled="@marking" title="Als Spam lernen und in den Spam-Ordner verschieben">Spam</button>
+                            <button @onclick="() => Mark(l.Id, false)" disabled="@marking" title="Als kein Spam lernen und in den Posteingang verschieben">Ham</button>
+                        }
+                    </td>
                 </tr>
             }
         </tbody>
@@ -82,7 +93,8 @@ else
 @code {
     List<Account> accounts = [];
     List<LogEntry> log = [];
-    bool onlySpam, rspamdOk;
+    bool onlySpam, rspamdOk, marking;
+    string? markInfo;
     long bayesSpam, bayesHam;
     PeriodicTimer? timer;
 
@@ -114,6 +126,14 @@ else
         {
             rspamdOk = false;
         }
+    }
+
+    async Task Mark(long id, bool spam)
+    {
+        marking = true;
+        try { markInfo = await Scanner.Mark(id, spam); }
+        catch (Exception e) { markInfo = "Fehler: " + e.Message; }
+        marking = false;
     }
 
     static string Counter(string key) => Db.Query<string>("select value from settings where key=@key", new { key }).FirstOrDefault() ?? "0";

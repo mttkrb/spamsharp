@@ -99,7 +99,6 @@ input.weight { width: 90px; text-align: right; }
 .ok { color: var(--ok); }
 .err { color: var(--err); }
 .badge { margin-left: 6px; font-size: .75rem; padding: 1px 6px; border-radius: 4px; border: 1px solid var(--line); color: var(--muted); }
-.folders { columns: 2 220px; padding-left: 18px; }
 .meta { display: grid; grid-template-columns: max-content 1fr; gap: 4px 16px; }
 .meta dt { color: var(--muted); }
 .meta dd { margin: 0; overflow-wrap: anywhere; }

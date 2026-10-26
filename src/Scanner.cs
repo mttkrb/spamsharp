@@ -133,12 +133,12 @@ public class Scanner(ILogger<Scanner> log) : BackgroundService
                     // Nutzer hat die Mail aus dem Spam-Ordner zurückgeholt: nicht erneut verschieben, sondern daraus lernen
                     var ok = await Rspamd.Learn(await Raw(inbox, m.UniqueId, ct), false, ct);
                     Db.SetKnown(acc.Id, mid, "ham");
-                    Db.Log(acc, from, subject, null, "zurückgeholt → " + (ok ? "als kein Spam gelernt" : "bleibt im Posteingang (rspamd: zu kurz oder schon gelernt)"));
+                    Db.Log(acc, from, subject, null, "zurückgeholt → " + (ok ? "als kein Spam gelernt" : "bleibt im Posteingang (rspamd: zu kurz oder schon gelernt)"), messageId: mid);
                     continue;
                 }
                 if (m.Size > maxSize)
                 {
-                    Db.Log(acc, from, subject, null, "übersprungen (zu groß)");
+                    Db.Log(acc, from, subject, null, "übersprungen (zu groß)", messageId: mid);
                     continue;
                 }
                 var (score, symbols) = await Rspamd.Check(await Raw(inbox, m.UniqueId, ct), ct);
@@ -148,7 +148,7 @@ public class Scanner(ILogger<Scanner> log) : BackgroundService
                     spam.Add(m.UniqueId);
                     spamIds.Add(mid);
                 }
-                Db.Log(acc, from, subject, score, isSpam ? "Spam → " + spamFolder.FullName : "ok", JsonSerializer.Serialize(symbols));
+                Db.Log(acc, from, subject, score, isSpam ? "Spam → " + spamFolder.FullName : "ok", JsonSerializer.Serialize(symbols), mid);
                 Db.Count("stat_checked");
             }
             if (spam.Count > 0)
@@ -179,7 +179,7 @@ public class Scanner(ILogger<Scanner> log) : BackgroundService
             var ok = await Rspamd.Learn(await Raw(f, m.UniqueId, ct), spam, ct);
             Db.SetKnown(acc.Id, m.Envelope?.MessageId, spam ? "spam" : "ham");
             Db.Log(acc, Sender(m.Envelope), m.Envelope?.Subject, null,
-                $"aus „{name}“ als {(spam ? "Spam" : "kein Spam")} " + (ok ? "gelernt" : "markiert (rspamd: zu kurz oder schon gelernt)"));
+                $"aus „{name}“ als {(spam ? "Spam" : "kein Spam")} " + (ok ? "gelernt" : "markiert (rspamd: zu kurz oder schon gelernt)"), messageId: m.Envelope?.MessageId);
         }
         await f.MoveToAsync(items.Select(m => m.UniqueId).ToList(), target, ct);
         return items.Count;
@@ -236,12 +236,39 @@ public class Scanner(ILogger<Scanner> log) : BackgroundService
     }
 
     // Für „Verbindung testen“: alle Ordner und der Spam-Ordner, den der Scanner verwenden würde
-    public static async Task<(List<string> Folders, string Spam)> Folders(Account a)
+    // Baumreihenfolge: Trenner als kleinstes Zeichen sortieren, damit Unterordner direkt unter ihrem Elternordner stehen
+    public static async Task<(List<FolderNode> Folders, string Spam)> Folders(Account a)
     {
         using var imap = await Connect(a, default);
         var list = await imap.GetFoldersAsync(imap.PersonalNamespaces[0]);
         var spam = a.SpamFolder != "" ? a.SpamFolder : (await DetectSpam(imap, default))?.FullName ?? "Junk (wird angelegt)";
-        return (list.Select(f => f.FullName).Order().ToList(), spam);
+        var tree = list
+            .OrderBy(f => f.DirectorySeparator == '\0' ? f.FullName : f.FullName.Replace(f.DirectorySeparator, '\u0001'), StringComparer.Ordinal)
+            .Select(f => new FolderNode(f.FullName, f.Name, f.DirectorySeparator == '\0' ? 0 : f.FullName.Count(c => c == f.DirectorySeparator),
+                !f.Attributes.HasFlag(FolderAttributes.NoSelect) && !f.Attributes.HasFlag(FolderAttributes.NonExistent)))
+            .ToList();
+        return (tree, spam);
+    }
+
+    public record FolderNode(string FullName, string Name, int Depth, bool Selectable);
+
+    // Einzelne Mail aus der Übersicht markieren: in den Lernordner verschieben, der Scanner lernt und sortiert sie dann
+    public async Task<string> Mark(long logId, bool spam)
+    {
+        var e = Db.Query<LogEntry>("select * from log where id=@logId", new { logId }).FirstOrDefault();
+        if (e?.MessageId is null || e.AccountId is null || Db.Account(e.AccountId.Value) is not { } acc) return "Mail lässt sich nicht mehr zuordnen";
+        using var imap = await Connect(acc, stopping);
+        var learn = await Folder(imap, Settings.Get(spam ? "learn_spam" : "learn_ham"), stopping);
+        foreach (var f in new[] { await imap.GetFolderAsync(acc.Folder, stopping), await SpamFolder(imap, acc, stopping) })
+        {
+            await f.OpenAsync(FolderAccess.ReadWrite, stopping);
+            var uids = await f.SearchAsync(SearchQuery.HeaderContains("Message-ID", e.MessageId), stopping);
+            if (uids.Count == 0) continue;
+            await f.MoveToAsync(uids, learn, stopping);
+            Restart(acc.Id);
+            return $"„{e.Subject}“ wird als {(spam ? "Spam" : "kein Spam")} gelernt" + (acc.Enabled ? "" : " (sobald das Postfach aktiv ist)");
+        }
+        return $"„{e.Subject}“ nicht gefunden (gelöscht oder in einen anderen Ordner verschoben?)";
     }
 
     // Einmaliges Anlernen mit vorhandenen Mails (verschiebt nichts)

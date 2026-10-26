@@ -37,6 +37,8 @@ public class LogEntry
     public double? Score { get; set; }
     public string Action { get; set; } = "";
     public string? Symbols { get; set; }
+    public long? AccountId { get; set; }
+    public string? MessageId { get; set; }
 }
 
 public static class Db
@@ -59,6 +61,7 @@ public static class Db
             create table if not exists known(accountid integer, messageid text, kind text, primary key(accountid, messageid));
             create table if not exists settings(key text primary key, value text);
             """);
+        try { Exec("alter table log add column messageid text"); } catch (SqliteException) { }  // ältere Datenbanken
     }
 
     static SqliteConnection Open()
@@ -89,10 +92,10 @@ public static class Db
     public static void Status(long id, string status) =>
         Exec("update accounts set lastrun=@Now, status=@status where id=@id", new { id, status, Now });
 
-    public static void Log(Account a, string? sender, string? subject, double? score, string action, string? symbols = null)
+    public static void Log(Account a, string? sender, string? subject, double? score, string action, string? symbols = null, string? messageId = null)
     {
-        Exec("insert into log(ts,accountid,account,sender,subject,score,action,symbols) values(@Now,@Id,@Name,@sender,@subject,@score,@action,@symbols)",
-            new { Now, a.Id, a.Name, sender, subject, score, action, symbols });
+        Exec("insert into log(ts,accountid,account,sender,subject,score,action,symbols,messageid) values(@Now,@Id,@Name,@sender,@subject,@score,@action,@symbols,@messageId)",
+            new { Now, a.Id, a.Name, sender, subject, score, action, symbols, messageId });
         Exec("delete from log where id <= (select max(id) from log) - @LogKeep", new { LogKeep });
     }
 

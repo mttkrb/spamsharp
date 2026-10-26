@@ -50,12 +50,25 @@
         <label>Port <small>143 = STARTTLS, sonst SSL/TLS (meist 993)</small> <InputNumber @bind-Value="acc.Port" /></label>
     }
 
-    <details open="@(Id is not null)">
+    <details open="@advanced">
         <summary>Erweitert</summary>
         <div class="form">
             <label>Anzeigename <small>leer = E-Mail-Adresse</small> <InputText @bind-Value="acc.Name" /></label>
             <label>Zu prüfender Ordner <InputText @bind-Value="acc.Folder" /></label>
-            <label>Spam-Ordner <small>leer = automatisch den Spam-Ordner des Anbieters verwenden</small> <InputText @bind-Value="acc.SpamFolder" placeholder="automatisch" /></label>
+            <label>
+                Spam-Ordner @if (folders is null){<small>Ordnerliste über „Verbindung testen“ laden</small>}
+                <select @bind="acc.SpamFolder">
+                    <option value="">automatisch (Spam-Ordner des Anbieters)</option>
+                    @if (acc.SpamFolder != "" && folders?.Any(f => f.FullName == acc.SpamFolder) != true)
+                    {
+                        <option value="@acc.SpamFolder">@acc.SpamFolder</option>
+                    }
+                    @foreach (var f in folders ?? [])
+                    {
+                        <option value="@f.FullName" disabled="@(!f.Selectable)">@(new string('\u00A0', f.Depth * 4) + f.Name)</option>
+                    }
+                </select>
+            </label>
             <label>Spam ab Score <small>rspamd-Standard 6, niedriger = strenger</small> <InputNumber @bind-Value="acc.Threshold" step="0.5" /></label>
             <label class="check"><InputCheckbox @bind-Value="acc.Enabled" /> aktiv</label>
         </div>
@@ -80,26 +93,14 @@
 {
     <p class="@(folders is null ? "err" : "ok")">@testResult</p>
 }
-@if (folders is not null)
-{
-    <h3>Ordner auf dem Server</h3>
-    <p class="muted">Klick übernimmt den Ordner als Spam-Ordner.</p>
-    <ul class="folders">
-        @foreach (var f in folders)
-        {
-            <li><button type="button" class="link" @onclick="() => acc.SpamFolder = f">@f</button></li>
-        }
-    </ul>
-}
-
 @code {
     const string Other = "-";
     [Parameter] public long? Id { get; set; }
     Account acc = new() { SpamFolder = "" };
     string provider = "", password = "";
     string? error, testResult;
-    List<string>? folders;
-    bool testing, confirmDelete, discovering;
+    List<Scanner.FolderNode>? folders;
+    bool testing, confirmDelete, discovering, advanced;
     string? discoverInfo;
 
     string Domain => acc.Username.Split('@').LastOrDefault() ?? "";
@@ -115,7 +116,18 @@
             return;
         }
         acc = found;
+        advanced = true;
         provider = Providers.ByHost(acc.Host)?.Name ?? Other;
+    }
+
+    // Beim Bearbeiten Ordnerliste gleich laden, damit das Dropdown gefüllt ist
+    protected override Task OnAfterRenderAsync(bool firstRender) =>
+        firstRender && Id is not null ? Reload() : Task.CompletedTask;
+
+    async Task Reload()
+    {
+        await Test();
+        StateHasChanged();
     }
 
     void ApplyProvider()
@@ -199,6 +211,7 @@
         {
             (folders, var spam) = await Scanner.Folders(probe);
             testResult = $"Verbindung OK. Spam wird verschoben nach: {spam}";
+            advanced = true;  // Spam-Ordner-Auswahl zeigen
         }
         catch (Exception e)
         {
