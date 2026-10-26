@@ -75,7 +75,7 @@ else
                     <td>@if (l.Symbols is null){@(l.Subject ?? "(kein Betreff)")}else{<a href="mail/@l.Id">@(l.Subject ?? "(kein Betreff)")</a>}</td>
                     <td class="num">@l.Score?.ToString("0.0")</td>
                     <td>@l.Action</td>
-                    <td class="actions nowrap">
+                    <td class="actions">
                         @if (l.MessageId is not null)
                         {
                             @if (l.Kind != "spam")
