@@ -78,8 +78,14 @@ else
                     <td class="actions nowrap">
                         @if (l.MessageId is not null)
                         {
-                            <button @onclick="() => Mark(l.Id, true)" disabled="@marking" title="Als Spam lernen und in den Spam-Ordner verschieben">Spam</button>
-                            <button @onclick="() => Mark(l.Id, false)" disabled="@marking" title="Als kein Spam lernen und in den Posteingang verschieben">Ham</button>
+                            @if (l.Kind != "spam")
+                            {
+                                <button @onclick="() => Mark(l.Id, true)" disabled="@marking" title="Als Spam lernen und in den Spam-Ordner verschieben">Spam</button>
+                            }
+                            @if (l.Kind != "ham")
+                            {
+                                <button @onclick="() => Mark(l.Id, false)" disabled="@marking" title="Als kein Spam lernen und in den Posteingang verschieben">Ham</button>
+                            }
                         }
                     </td>
                 </tr>
@@ -117,7 +123,8 @@ else
     async Task Load()
     {
         accounts = Db.Accounts();
-        log = Db.Query<LogEntry>("select * from log " + (onlySpam ? "where action like 'Spam%' " : "") + "order by id desc limit 200");
+        log = Db.Query<LogEntry>("select l.*, k.kind from log l left join known k on k.accountid=l.accountid and k.messageid=l.messageid "
+            + (onlySpam ? "where l.action like 'Spam%' " : "") + "order by l.id desc limit 200");
         try
         {
             var files = (await Rspamd.Stat())?["statfiles"]?.AsArray() ?? [];

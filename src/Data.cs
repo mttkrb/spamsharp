@@ -39,6 +39,7 @@ public class LogEntry
     public string? Symbols { get; set; }
     public long? AccountId { get; set; }
     public string? MessageId { get; set; }
+    public string? Kind { get; set; }  // aus known: "spam"/"ham", wenn schon gelernt bzw. verschoben
 }
 
 public static class Db
