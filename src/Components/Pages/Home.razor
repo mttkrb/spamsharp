@@ -37,6 +37,7 @@ else
                         <td class="num">@a.Threshold</td>
                         <td><small class="muted">@a.LastRun</small><br /><span class="@(IsError(a.Status) ? "err" : "")">@a.Status</span></td>
                         <td class="actions">
+                            <button @onclick="() => Toggle(a)">@(a.Enabled ? "Pause" : "Weiter")</button>
                             <button @onclick="() => Scanner.Restart(a.Id)" disabled="@(!a.Enabled)">Jetzt prüfen</button>
                             <button @onclick="() => Scanner.Train(a.Id, true)" title="Alle Mails im Spam-Ordner als Spam lernen">Spam lernen</button>
                             <button @onclick="() => Scanner.Train(a.Id, false)" title="Posteingangs-Mails älter als 7 Tage als kein Spam lernen">Ham lernen</button>
@@ -126,6 +127,15 @@ else
         {
             rspamdOk = false;
         }
+    }
+
+    // Pausieren/Fortsetzen: Scanner-Schleife des Postfachs beenden bzw. neu starten
+    async Task Toggle(Account a)
+    {
+        Db.Exec("update accounts set enabled=@on where id=@Id", new { on = !a.Enabled, a.Id });
+        Db.Status(a.Id, a.Enabled ? "pausiert" : "startet …");
+        Scanner.Restart(a.Id);
+        await Load();
     }
 
     async Task Mark(long id, bool spam)
