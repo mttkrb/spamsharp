@@ -21,8 +21,9 @@ in den Spam-Ordner des Postfachs. Wirkt dadurch auf allen Geräten gleich. Ein D
 ## Einrichten in Portainer
 
 1. **Stacks → Add stack → Web editor**, Name `spamsharp`, Inhalt von [`docker-compose.yml`](docker-compose.yml) einfügen.
-2. Unten bei **Environment variables** `ADMIN_PASSWORD` setzen.
-3. **Deploy the stack**, dann `http://<server>:8083` öffnen (Benutzer `admin`, Passwort = `ADMIN_PASSWORD`). Weitere Benutzer legt admin unter **Einstellungen** an; und weist dort auch vorhandene Postfächer zu (bestehende gehören zunächst admin); jeder sieht nur seine eigenen Postfächer, gelernt wird gemeinsam, Regeln und Einstellungen ändert nur admin.
+2. Unten bei **Environment variables** `ADMIN_PASSWORD` setzen. Für „Passwort vergessen“ zusätzlich `PUBLIC_URL`
+   (Adresse der Weboberfläche) und `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_FROM` (leer = `SMTP_USER`).
+3. **Deploy the stack**, dann `http://<server>:8083` öffnen (Benutzer `admin`, Passwort = `ADMIN_PASSWORD`). Weitere Benutzer legt admin unter **Einstellungen** an (Benutzername = E-Mail-Adresse, umbenennen geht dort auch); und weist dort auch vorhandene Postfächer zu (bestehende gehören zunächst admin); jeder sieht nur seine eigenen Postfächer, gelernt wird gemeinsam, Regeln und Einstellungen ändert nur admin.
 4. **+ Postfach hinzufügen**, E-Mail-Adresse und Passwort eingeben. „Verbindung testen“ zeigt, ob alles passt
    und wohin Spam verschoben wird.
 

@@ -182,6 +182,28 @@ public static class Users
         return ids;
     }
 
+    public static bool Exists(string name) => Db.Query<long>("select count(*) from users where name=@name", new { name })[0] > 0;
+
+    // Benutzername = E-Mail-Adresse (dorthin geht „Passwort vergessen“)
+    public static bool IsEmail(string name) => System.Net.Mail.MailAddress.TryCreate(name, out var a) && a.Address == name;
+
+    // Neuer Name samt Postfächern; alte Anmeldungen werden ungültig (Stamp findet den alten Namen nicht mehr)
+    public static void Rename(string from, string to) =>
+        Db.Exec("begin; update users set name=@to where name=@from; update accounts set owner=@to where owner=@from; commit;", new { from, to });
+
+    // Reset-Link: 1 Stunde gültig und nur bis zur nächsten Passwortänderung (Stamp)
+    public static ITimeLimitedDataProtector ResetProtector = null!;
+    public static string ResetToken(string name) => ResetProtector.Protect(name + "\n" + Stamp(name), TimeSpan.FromHours(1));
+    public static string? ResetUser(string token)
+    {
+        try
+        {
+            var p = ResetProtector.Unprotect(token).Split('\n');
+            return p.Length == 2 && Stamp(p[0]) == p[1] ? p[0] : null;
+        }
+        catch (CryptographicException) { return null; }
+    }
+
     // Liefert den gespeicherten Benutzernamen bei richtigem Passwort, sonst null
     public static string? Login(string name, string password)
     {
@@ -207,5 +229,31 @@ public static class Users
         var p = stored.Split(':');
         return CryptographicOperations.FixedTimeEquals(
             Rfc2898DeriveBytes.Pbkdf2(password, Convert.FromBase64String(p[0]), Iterations, HashAlgorithmName.SHA256, 32), Convert.FromBase64String(p[1]));
+    }
+}
+
+// Mailversand für „Passwort vergessen“; aus, solange SMTP_HOST oder PUBLIC_URL fehlen
+public static class Mailer
+{
+    static string? Env(string k) => Environment.GetEnvironmentVariable(k) is { Length: > 0 } v ? v : null;
+    static readonly string? Host = Env("SMTP_HOST"), User = Env("SMTP_USER"), Password = Env("SMTP_PASSWORD");
+    static readonly int Port = int.TryParse(Env("SMTP_PORT"), out var p) ? p : 587;
+    static readonly string? From = Env("SMTP_FROM") ?? User;
+    // Feste Adresse für Links in Mails (nicht den Host-Header der Anfrage nehmen, der ist fälschbar)
+    public static readonly string? PublicUrl = Env("PUBLIC_URL")?.TrimEnd('/');
+    public static bool Enabled => Host is not null && From is not null && PublicUrl is not null;
+
+    public static async Task Send(string to, string subject, string text)
+    {
+        var msg = new MimeKit.MimeMessage();
+        msg.From.Add(new MimeKit.MailboxAddress("SpamSharp", From!));
+        msg.To.Add(MimeKit.MailboxAddress.Parse(to));
+        msg.Subject = subject;
+        msg.Body = new MimeKit.TextPart("plain") { Text = text };
+        using var smtp = new MailKit.Net.Smtp.SmtpClient();
+        await smtp.ConnectAsync(Host!, Port, MailKit.Security.SecureSocketOptions.Auto);
+        if (User is not null) await smtp.AuthenticateAsync(User, Password ?? "");
+        await smtp.SendAsync(msg);
+        await smtp.DisconnectAsync(true);
     }
 }
