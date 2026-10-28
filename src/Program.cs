@@ -51,6 +51,8 @@ builder.Services.AddHostedService(sp => sp.GetRequiredService<Scanner>());
 builder.Services.AddHostedService<Daemons>();
 
 var app = builder.Build();
+ImapPassword.Protector = app.Services.GetDataProtector("imap-password");
+ImapPassword.Migrate();
 app.UseExceptionHandler("/Error", createScopeForErrors: true);
 
 app.Use(async (ctx, next) =>

@@ -97,6 +97,7 @@ def move(subject, src, dst):
     m.uid("COPY", uid, dst); m.uid("STORE", uid, "+FLAGS", r"(\Deleted)"); m.expunge(); m.logout()
 log = lambda: [r[0] for r in sqlite3.connect("/data/spamsharp.db").execute("select action from log")]
 
+wait("IMAP-Passwort beim Start verschlüsselt", lambda: sqlite3.connect("/data/spamsharp.db").execute("select password from accounts").fetchone()[0].startswith("dp:"))
 wait("Spam-Ordner automatisch erkannt (Spamverdacht), normale Mail bleibt", lambda: "Gewinn" in subjects("Spamverdacht") and "Hallo" in subjects("INBOX"))
 wait("Lernordner angelegt", lambda: imap().select("Spam-lernen")[0] == "OK" and imap().select("Kein-Spam")[0] == "OK")
 assert all("\\Seen" not in f for f in {**subjects("INBOX"), **subjects("Spamverdacht")}.values()), "Mails wurden als gelesen markiert"

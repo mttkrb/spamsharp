@@ -66,7 +66,7 @@ public class Scanner(ILogger<Scanner> log) : BackgroundService
         try
         {
             await imap.ConnectAsync(a.Host, a.Port, a.Port == 143 ? SecureSocketOptions.StartTls : SecureSocketOptions.SslOnConnect, ct);
-            await imap.AuthenticateAsync(a.Username, a.Password, ct);
+            await imap.AuthenticateAsync(a.Username, ImapPassword.Reveal(a.Password), ct);
             return imap;
         }
         catch
