@@ -53,7 +53,7 @@
 <div class="form">
     <label>E-Mail-Adresse <small>dorthin geht „Passwort vergessen“</small>
         <input type="email" @bind="newUser" autocomplete="off" autocapitalize="none" /></label>
-    <label>Passwort <small>mind. 8 Zeichen; bei vorhandenem Benutzer wird das Passwort ersetzt</small>
+    <label>Passwort <small>mind. 8 Zeichen; bei vorhandenem Benutzer wird das Passwort ersetzt@(Mailer.Enabled ? "; leer = Einladung per Mail, Passwort legt der Benutzer selbst fest" : "")</small>
         <input type="password" @bind="newPassword" autocomplete="new-password" /></label>
     @if (userMessage is not null)
     {
@@ -99,18 +99,34 @@
     string renameTo = "";
     bool userOk;
 
-    void SaveUser()
+    async Task SaveUser()
     {
         var name = newUser.Trim();
+        var invite = newPassword == "" && Mailer.Enabled;
         (userOk, userMessage) = name switch
         {
             "" => (false, "Bitte eine E-Mail-Adresse eingeben."),
             _ when !Users.IsEmail(name) && !Users.Exists(name) => (false, "Bitte eine gültige E-Mail-Adresse eingeben."),
-            _ when newPassword.Length < 8 => (false, "Das Passwort braucht mindestens 8 Zeichen."),
+            _ when invite && !Users.IsEmail(name) => (false, "Einladung geht nur an eine E-Mail-Adresse, bitte erst umbenennen."),
+            _ when !invite && newPassword.Length < 8 => (false, "Das Passwort braucht mindestens 8 Zeichen."),
             _ => (true, $"Benutzer „{name}“ gespeichert."),
         };
         if (!userOk) return;
-        Users.Save(name, newPassword);
+        if (!invite) Users.Save(name, newPassword);
+        else
+        {
+            // vorhandener Benutzer behält sein Passwort, bis er den Link benutzt (= Einladung erneut senden)
+            if (!Users.Exists(name)) Users.Save(name, Convert.ToBase64String(System.Security.Cryptography.RandomNumberGenerator.GetBytes(24)));
+            try
+            {
+                await Mailer.Invite(name);
+                userMessage = $"Einladung an „{name}“ verschickt.";
+            }
+            catch (Exception e)
+            {
+                (userOk, userMessage) = (false, $"Benutzer angelegt, aber die Einladung konnte nicht verschickt werden: {e.Message}");
+            }
+        }
         (newUser, newPassword, users) = ("", "", Users.All());
     }
 
