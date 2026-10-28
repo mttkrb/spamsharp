@@ -42,8 +42,8 @@ U=http://127.0.0.1:18083
 for i in $(seq 60); do curl -fs -o /dev/null $U/login && break; sleep 1; done
 test "$(curl -s -o /dev/null -w '%{http_code}' $U/)" = 302
 test "$(curl -s -o /dev/null -w '%{http_code}' $U/app.css)" = 200
-curl -s -d password=falsch $U/login | grep -q "Falsches Passwort"
-test "$(curl -s -o /dev/null -w '%{http_code}' -c "$T/jar" -d password=$PW $U/login)" = 302
+curl -s -d user=admin -d password=falsch $U/login | grep -q "Benutzername oder Passwort falsch"
+test "$(curl -s -o /dev/null -w '%{http_code}' -c "$T/jar" -d user=admin -d password=$PW $U/login)" = 302
 test "$(curl -s -o /dev/null -w '%{http_code}' -b "$T/jar" $U/)" = 200
 test "$(curl -s -o /dev/null -w '%{http_code}' -b "$T/jar" -H 'Origin: http://evil.example' $U/)" = 403
 test "$(curl -s -o /dev/null -w '%{http_code}' -b "$T/jar" $U/_framework/blazor.web.js)" = 200
@@ -124,4 +124,34 @@ docker exec spamsharp-test rspamc -h 127.0.0.1:11334 stat | grep -q "Messages le
 echo "   OK: rspamd hat aus den Lernordnern gelernt"
 docker exec spamsharp-test sh -c 'test -s /data/redis/dump.rdb || sleep 61; ls /data/redis/dump.rdb' >/dev/null
 echo "   OK: redis speichert in /data/redis"
+
+echo "== Mehrere Benutzer"
+py <<'EOF'
+import base64, hashlib, os, sqlite3
+salt = os.urandom(16); h = hashlib.pbkdf2_hmac("sha256", b"erika-passwort", salt, 100_000, 32)
+db = sqlite3.connect("/data/spamsharp.db")
+db.execute("insert into users values('Erika', ?)", (base64.b64encode(salt).decode() + ":" + base64.b64encode(h).decode(),))
+db.commit()
+EOF
+test "$(curl -s -o /dev/null -w '%{http_code}' -c "$T/jar2" -d user=erika -d password=erika-passwort $U/login)" = 302
+curl -s -b "$T/jar" $U/ | grep -q 'href="account/1"'
+! curl -s -b "$T/jar2" $U/ | grep -q 'href="account/1"'
+curl -s -b "$T/jar2" $U/ | grep -q 'Erika'
+! curl -s -b "$T/jar2" $U/account/1 | grep -q 'test@test.local'
+test "$(curl -s -o /dev/null -w '%{redirect_url}' -b "$T/jar2" $U/settings)" = "$U/?ReturnUrl=%2Fsettings"
+test "$(curl -s -o /dev/null -w '%{http_code}' -b "$T/jar2" $U/rules)" = 302
+curl -s -b "$T/jar" $U/settings | grep -q 'Benutzer speichern'
+echo "   OK: Benutzer sieht keine fremden Postfächer, Regeln/Einstellungen nur für Admin"
+py <<'EOF'
+import sqlite3; db = sqlite3.connect("/data/spamsharp.db"); db.execute("update accounts set owner='Erika' where id=1"); db.commit()
+EOF
+curl -s -b "$T/jar2" $U/ | grep -q 'href="account/1"'
+! curl -s -b "$T/jar" $U/ | grep -q 'href="account/1"'
+curl -s -b "$T/jar" $U/settings | grep -q 'Postfächer zuweisen'
+echo "   OK: zugewiesenes Postfach sieht nur der neue Besitzer"
+py <<'EOF'
+import sqlite3; db = sqlite3.connect("/data/spamsharp.db"); db.execute("delete from users"); db.commit()
+EOF
+test "$(curl -s -o /dev/null -w '%{http_code}' -b "$T/jar2" $U/)" = 302
+echo "   OK: gelöschter Benutzer ist abgemeldet"
 echo "ALLE TESTS BESTANDEN"

@@ -5,8 +5,10 @@
 <PageTitle>SpamSharp</PageTitle>
 
 <div class="tiles">
-    <div class="tile"><b>@Counter("stat_checked")</b><span>Mails geprüft</span></div>
-    <div class="tile"><b>@Counter("stat_spam")</b><span>als Spam verschoben</span></div>
+    <AuthorizeView Roles="admin">
+        <div class="tile"><b>@Counter("stat_checked")</b><span>Mails geprüft (alle Benutzer)</span></div>
+        <div class="tile"><b>@Counter("stat_spam")</b><span>als Spam verschoben (alle Benutzer)</span></div>
+    </AuthorizeView>
     <div class="tile">
         <b>@bayesSpam / @bayesHam</b>
         <span>gelernt: Spam / kein Spam<br />@(bayesSpam >= 200 && bayesHam >= 200 ? "Bayes-Filter aktiv" : "Bayes-Filter aktiv ab je 200")</span>
@@ -99,6 +101,8 @@ else
 }
 
 @code {
+    [CascadingParameter] Task<AuthenticationState> Auth { get; set; } = null!;
+    string me = "";
     List<Account> accounts = [];
     List<LogEntry> log = [];
     bool onlySpam, rspamdOk, marking;
@@ -106,7 +110,11 @@ else
     long bayesSpam, bayesHam;
     PeriodicTimer? timer;
 
-    protected override Task OnInitializedAsync() => Load();
+    protected override async Task OnInitializedAsync()
+    {
+        me = (await Auth).User.Identity!.Name!;
+        await Load();
+    }
 
     protected override void OnAfterRender(bool firstRender)
     {
@@ -122,9 +130,10 @@ else
 
     async Task Load()
     {
-        accounts = Db.Accounts();
+        accounts = Db.Accounts(me);
         log = Db.Query<LogEntry>("select l.*, k.kind from log l left join known k on k.accountid=l.accountid and k.messageid=l.messageid "
-            + (onlySpam ? "where l.action like 'Spam%' " : "") + "order by l.id desc limit 200");
+            + "where l.accountid in (select id from accounts where owner=@me) "
+            + (onlySpam ? "and l.action like 'Spam%' " : "") + "order by l.id desc limit 200", new { me });
         try
         {
             var files = (await Rspamd.Stat())?["statfiles"]?.AsArray() ?? [];

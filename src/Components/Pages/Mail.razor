@@ -26,7 +26,12 @@ else
                 @foreach (var s in symbols)
                 {
                     <tr>
-                        <td><a href="rules?q=@Uri.EscapeDataString(s.Name)">@s.Name</a></td>
+                        <td>
+                            <AuthorizeView Roles="admin">
+                                <Authorized><a href="rules?q=@Uri.EscapeDataString(s.Name)">@s.Name</a></Authorized>
+                                <NotAuthorized>@s.Name</NotAuthorized>
+                            </AuthorizeView>
+                        </td>
                         <td class="num @(s.Score > 0 ? "err" : s.Score < 0 ? "ok" : "muted")">@s.Score.ToString("+0.00;-0.00;0")</td>
                         <td>@s.Description @if (s.Options is { Length: > 0 }){<br /><small class="muted">@s.Options</small>}</td>
                     </tr>
@@ -39,12 +44,15 @@ else
 
 @code {
     [Parameter] public long Id { get; set; }
+    [CascadingParameter] Task<AuthenticationState> Auth { get; set; } = null!;
+    string me = "";
     LogEntry? entry;
     List<Symbol> symbols = [];
 
-    protected override void OnParametersSet()
+    protected override async Task OnParametersSetAsync()
     {
-        entry = Db.Query<LogEntry>("select * from log where id=@Id", new { Id }).FirstOrDefault();
+        me = (await Auth).User.Identity!.Name!;
+        entry = Db.Query<LogEntry>("select * from log where id=@Id and accountid in (select id from accounts where owner=@me)", new { Id, me }).FirstOrDefault();
         symbols = entry?.Symbols is { } json ? JsonSerializer.Deserialize<List<Symbol>>(json) ?? [] : [];
     }
 }

@@ -1,3 +1,5 @@
+using System.Security.Cryptography;
+using System.Text;
 using Dapper;
 using Microsoft.Data.Sqlite;
 
@@ -25,6 +27,7 @@ public class Account
     public long LastUid { get; set; }
     public string? LastRun { get; set; }
     public string? Status { get; set; }
+    public string Owner { get; set; } = Users.Admin;
 }
 
 public class LogEntry
@@ -61,8 +64,10 @@ public static class Db
             -- Message-IDs, die wir als Spam verschoben bzw. als Ham gelernt haben (erkennt zurückgeholte Mails)
             create table if not exists known(accountid integer, messageid text, kind text, primary key(accountid, messageid));
             create table if not exists settings(key text primary key, value text);
+            create table if not exists users(name text primary key collate nocase, hash text not null);
             """);
         try { Exec("alter table log add column messageid text"); } catch (SqliteException) { }  // ältere Datenbanken
+        try { Exec("alter table accounts add column owner text not null default 'admin'"); } catch (SqliteException) { }
     }
 
     static SqliteConnection Open()
@@ -88,7 +93,10 @@ public static class Db
 
     public static Account? Account(long id) => Query<Account>("select * from accounts where id=@id", new { id }).FirstOrDefault();
 
-    public static List<Account> Accounts() => Query<Account>("select * from accounts order by name");
+    public static List<Account> Accounts(string? owner = null) =>
+        Query<Account>("select * from accounts where @owner is null or owner=@owner order by name", new { owner });
+    // Postfach nur liefern, wenn es dem Benutzer gehört
+    public static Account? Account(long id, string owner) => Account(id) is { } a && a.Owner == owner ? a : null;
 
     public static void Status(long id, string status) =>
         Exec("update accounts set lastrun=@Now, status=@status where id=@id", new { id, status, Now });
@@ -133,4 +141,53 @@ public static class Settings
 
     public static void Set(string key, string value) =>
         Db.Exec("insert or replace into settings values(@key,@value)", new { key, value });
+}
+
+// „admin“ meldet sich mit ADMIN_PASSWORD an und verwaltet die übrigen Benutzer (Tabelle users)
+public static class Users
+{
+    public const string Admin = "admin";
+    public static string AdminPassword = "";
+    const int Iterations = 100_000;
+    static readonly string Dummy = Hash("dummy");
+
+    public static List<string> All() => Db.Query<string>("select name from users order by name");
+
+    public static void Save(string name, string password) =>
+        Db.Exec("insert into users values(@name,@hash) on conflict(name) do update set hash=excluded.hash", new { name, hash = Hash(password) });
+
+    // Benutzer samt Postfächern löschen; gibt die Postfach-IDs zurück (Scanner anhalten)
+    public static List<long> Delete(string name)
+    {
+        var ids = Db.Query<long>("select id from accounts where owner=@name", new { name });
+        Db.Exec("delete from users where name=@name; delete from known where accountid in (select id from accounts where owner=@name); delete from accounts where owner=@name", new { name });
+        return ids;
+    }
+
+    // Liefert den gespeicherten Benutzernamen bei richtigem Passwort, sonst null
+    public static string? Login(string name, string password)
+    {
+        if (name.Equals(Admin, StringComparison.OrdinalIgnoreCase))
+            return CryptographicOperations.FixedTimeEquals(Encoding.UTF8.GetBytes(password), Encoding.UTF8.GetBytes(AdminPassword)) ? Admin : null;
+        var row = Db.Query<(string Name, string Hash)>("select name, hash from users where name=@name", new { name }).FirstOrDefault();
+        return Check(password, row.Hash ?? Dummy) && row.Name is not null ? row.Name : null;  // Dummy: gleiche Laufzeit für unbekannte Namen
+    }
+
+    // Ändert sich bei neuem Passwort oder gelöschtem Benutzer und macht damit alte Anmeldungen ungültig
+    public static string? Stamp(string? name) => name == Admin
+        ? Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(AdminPassword)))[..16]
+        : Db.Query<string>("select hash from users where name=@name", new { name }).FirstOrDefault()?[^16..];
+
+    static string Hash(string password)
+    {
+        var salt = RandomNumberGenerator.GetBytes(16);
+        return Convert.ToBase64String(salt) + ":" + Convert.ToBase64String(Rfc2898DeriveBytes.Pbkdf2(password, salt, Iterations, HashAlgorithmName.SHA256, 32));
+    }
+
+    static bool Check(string password, string stored)
+    {
+        var p = stored.Split(':');
+        return CryptographicOperations.FixedTimeEquals(
+            Rfc2898DeriveBytes.Pbkdf2(password, Convert.FromBase64String(p[0]), Iterations, HashAlgorithmName.SHA256, 32), Convert.FromBase64String(p[1]));
+    }
 }

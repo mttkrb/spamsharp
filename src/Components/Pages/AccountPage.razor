@@ -96,6 +96,8 @@
 @code {
     const string Other = "-";
     [Parameter] public long? Id { get; set; }
+    [CascadingParameter] Task<AuthenticationState> Auth { get; set; } = null!;
+    string me = "";
     Account acc = new() { SpamFolder = "" };
     string provider = "", password = "";
     string? error, testResult;
@@ -107,10 +109,11 @@
 
     Provider? Preset => Providers.ByName(provider);
 
-    protected override void OnParametersSet()
+    protected override async Task OnParametersSetAsync()
     {
+        me = (await Auth).User.Identity!.Name!;
         if (Id is not long id) return;
-        if (Db.Account(id) is not { } found)
+        if (Db.Account(id, me) is not { } found)
         {
             Nav.NavigateTo("");
             return;
@@ -181,11 +184,12 @@
             _ => null,
         };
         if (error is not null) return;
+        acc.Owner = me;
 
         if (Id is null)
             acc.Id = Db.Query<long>("""
-                insert into accounts(name,host,port,username,password,folder,spamfolder,threshold,enabled)
-                values(@Name,@Host,@Port,@Username,@Password,@Folder,@SpamFolder,@Threshold,@Enabled) returning id
+                insert into accounts(name,host,port,username,password,folder,spamfolder,threshold,enabled,owner)
+                values(@Name,@Host,@Port,@Username,@Password,@Folder,@SpamFolder,@Threshold,@Enabled,@Owner) returning id
                 """, acc).Single();
         else
             // anderes Postfach/Ordner: wieder bei den letzten Mails anfangen
@@ -193,7 +197,7 @@
                 update accounts set uidvalidity = case when host=@Host and username=@Username and folder=@Folder then uidvalidity end,
                   name=@Name, host=@Host, port=@Port, username=@Username, password=@Password, folder=@Folder,
                   spamfolder=@SpamFolder, threshold=@Threshold, enabled=@Enabled
-                where id=@Id
+                where id=@Id and owner=@Owner
                 """, acc);
         Scanner.Restart(acc.Id);
         Nav.NavigateTo("");
@@ -227,7 +231,7 @@
             confirmDelete = true;
             return;
         }
-        Db.Exec("delete from accounts where id=@Id; delete from known where accountid=@Id", new { Id });
+        Db.Exec("delete from known where accountid in (select id from accounts where id=@Id and owner=@me); delete from accounts where id=@Id and owner=@me", new { Id, me });
         Scanner.Restart(Id!.Value);
         Nav.NavigateTo("");
     }

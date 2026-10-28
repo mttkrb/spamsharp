@@ -4,10 +4,15 @@
     <a class="brand" href="">📬 SpamSharp</a>
     <nav>
         <NavLink href="" Match="NavLinkMatch.All">Übersicht</NavLink>
-        <NavLink href="rules">Regeln</NavLink>
-        <NavLink href="settings">Einstellungen</NavLink>
+        <AuthorizeView Roles="admin">
+            <NavLink href="rules">Regeln</NavLink>
+            <NavLink href="settings">Einstellungen</NavLink>
+        </AuthorizeView>
     </nav>
-    <form method="post" action="logout" class="logout"><button class="link">Abmelden</button></form>
+    <form method="post" action="logout" class="logout">
+        <span class="muted"><AuthorizeView>@context.User.Identity?.Name</AuthorizeView></span>
+        <button class="link">Abmelden</button>
+    </form>
 </header>
 
 <main>@Body</main>
