@@ -74,7 +74,11 @@ Sehr kurze Mails überspringt rspamd beim Lernen.
    und `SMTP_HOST`, `SMTP_PORT` (Standard 587), `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_FROM` (leer = `SMTP_USER`).
 3. **Deploy the stack**, dann `http://<server>:8083` öffnen. Anmelden als `admin` mit `ADMIN_PASSWORD`.
 
-Daten liegen in `/opt/spamfilter` (legt Docker beim ersten Start an). Das ist auch das Backup.
+Daten liegen in `/opt/spamsharp` (legt Docker beim ersten Start an). Das ist auch das Backup.
+
+Umzug von älteren Installationen mit `/opt/spamfilter`: Stack stoppen, auf dem Server
+`sudo mv /opt/spamfilter /opt/spamsharp`, dann den Stack mit der neuen `docker-compose.yml` aktualisieren.
+Ohne Umzug startet SpamSharp leer (keine Postfächer, nichts gelernt).
 
 Updates: Das Image wird bei jeder Änderung und wöchentlich neu gebaut (neues rspamd).
 In Portainer im Stack **Editor → Update the stack** mit „Re-pull image and redeploy“.
@@ -108,7 +112,7 @@ Regeln und Einstellungen gelten für alle Benutzer.
 
 - Login über eigene Anmeldeseite (Cookie, 30 Tage); Anfragen fremder Webseiten werden abgelehnt. Nur im eigenen Netz betreiben
   oder hinter einen Reverse-Proxy mit HTTPS stellen.
-- IMAP-Passwörter liegen verschlüsselt in `/opt/spamfilter/spamsharp.db`, der Schlüssel in `/opt/spamfilter/keys`.
+- IMAP-Passwörter liegen verschlüsselt in `/opt/spamsharp/spamsharp.db`, der Schlüssel in `/opt/spamsharp/keys`.
   Wer den ganzen Ordner hat, kann sie entschlüsseln – Ordner schützen, am besten App-Passwörter nutzen.
   Fehlt `keys`, müssen die Passwörter neu eingegeben werden.
 - IMAP nur verschlüsselt: Port 143 mit STARTTLS, sonst SSL/TLS. Zertifikat und Hostname werden geprüft
