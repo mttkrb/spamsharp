@@ -143,6 +143,13 @@ test "$(curl -s -o /dev/null -w '%{http_code}' -b "$T/jar2" $U/rules)" = 302
 curl -s -b "$T/jar" $U/settings | grep -q 'Benutzer speichern'
 echo "   OK: Benutzer sieht keine fremden Postfächer, Regeln/Einstellungen nur für Admin"
 py <<'EOF'
+import sqlite3; db = sqlite3.connect("/data/spamsharp.db"); db.execute("update accounts set owner='Erika' where id=1"); db.commit()
+EOF
+curl -s -b "$T/jar2" $U/ | grep -q 'href="account/1"'
+! curl -s -b "$T/jar" $U/ | grep -q 'href="account/1"'
+curl -s -b "$T/jar" $U/settings | grep -q 'Postfächer zuweisen'
+echo "   OK: zugewiesenes Postfach sieht nur der neue Besitzer"
+py <<'EOF'
 import sqlite3; db = sqlite3.connect("/data/spamsharp.db"); db.execute("delete from users"); db.commit()
 EOF
 test "$(curl -s -o /dev/null -w '%{http_code}' -b "$T/jar2" $U/)" = 302

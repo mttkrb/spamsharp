@@ -51,11 +51,38 @@
     <div class="row"><button class="primary" @onclick="SaveUser">Benutzer speichern</button></div>
 </div>
 
+@if (users.Count > 0)
+{
+    <h3>Postfächer zuweisen</h3>
+    <p class="muted">Ein Postfach samt seinen Mails sieht nur sein Besitzer.</p>
+    <div class="scroll users">
+        <table>
+            <tbody>
+                @foreach (var a in accounts)
+                {
+                    <tr>
+                        <td>@a.Name<br /><small class="muted">@a.Username</small></td>
+                        <td>
+                            <select value="@a.Owner" @onchange="e => Assign(a, (string)e.Value!)" aria-label="Besitzer von @a.Name">
+                                @foreach (var u in users.Prepend(Users.Admin))
+                                {
+                                    <option value="@u">@u</option>
+                                }
+                            </select>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}
+
 @code {
     readonly Dictionary<string, string> values = Settings.All.Keys.ToDictionary(k => k, Settings.Get);
     string? message;
     bool saved;
     List<string> users = Users.All();
+    List<Account> accounts = Db.Accounts();
     string newUser = "", newPassword = "";
     string? userMessage, confirmDelete;
     bool userOk;
@@ -75,6 +102,13 @@
         (newUser, newPassword, users) = ("", "", Users.All());
     }
 
+    void Assign(Account a, string owner)
+    {
+        Db.Exec("update accounts set owner=@owner where id=@Id", new { owner, a.Id });
+        a.Owner = owner;
+        (userOk, userMessage) = (true, $"„{a.Name}“ gehört jetzt {owner}.");
+    }
+
     void DeleteUser(string name)
     {
         if (confirmDelete != name)
@@ -83,7 +117,7 @@
             return;
         }
         foreach (var id in Users.Delete(name)) Scanner.Restart(id);
-        (confirmDelete, users, userOk, userMessage) = (null, Users.All(), true, $"Benutzer „{name}“ gelöscht.");
+        (confirmDelete, users, accounts, userOk, userMessage) = (null, Users.All(), Db.Accounts(), true, $"Benutzer „{name}“ gelöscht.");
     }
 
     void Save()
