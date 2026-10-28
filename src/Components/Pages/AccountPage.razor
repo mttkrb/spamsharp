@@ -173,7 +173,7 @@
         acc.Name = acc.Name.Trim() is "" ? acc.Username : acc.Name.Trim();
         acc.Folder = acc.Folder.Trim() is "" ? "INBOX" : acc.Folder.Trim();
         acc.SpamFolder = acc.SpamFolder.Trim();
-        if (password != "") acc.Password = password;
+        if (password != "") acc.Password = ImapPassword.Protect(password);
         error = acc switch
         {
             _ when Preset is { Host: null } => "Dieser Anbieter wird nicht unterstützt.",
@@ -209,7 +209,7 @@
         var probe = new Account
         {
             Host = acc.Host.Trim(), Port = acc.Port, Username = acc.Username.Trim(),
-            Password = password != "" ? password : acc.Password, SpamFolder = acc.SpamFolder.Trim(),
+            Password = password != "" ? ImapPassword.Protect(password) : acc.Password, SpamFolder = acc.SpamFolder.Trim(),
         };
         try
         {

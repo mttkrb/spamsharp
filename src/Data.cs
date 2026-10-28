@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using System.Text;
 using Dapper;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.Data.Sqlite;
 
 namespace SpamSharp;
@@ -17,8 +18,7 @@ public class Account
     public string Host { get; set; } = "";
     public int Port { get; set; } = 993;
     public string Username { get; set; } = "";
-    // ponytail: Klartext in der sqlite-Datei, Schutz über Dateirechte von /data
-    public string Password { get; set; } = "";
+    public string Password { get; set; } = "";  // verschlüsselt (ImapPassword.Protect), Klartext nur über ImapPassword.Reveal
     public string Folder { get; set; } = "INBOX";
     public string SpamFolder { get; set; } = "";  // leer = automatisch
     public double Threshold { get; set; } = 6;
@@ -119,6 +119,24 @@ public static class Db
 
     public static void Count(string key) =>
         Exec("insert into settings values(@key,1) on conflict(key) do update set value=value+1", new { key });
+}
+
+// IMAP-Passwörter verschlüsselt mit ASP.NET Data Protection (Schlüssel in /data/keys).
+// Geht /data/keys verloren, müssen die Passwörter neu eingegeben werden.
+public static class ImapPassword
+{
+    const string Prefix = "dp:";
+    public static IDataProtector Protector = null!;
+
+    public static string Protect(string plain) => Prefix + Protector.Protect(plain);
+    public static string Reveal(string stored) => Protector.Unprotect(stored[Prefix.Length..]);
+
+    // Ältere Datenbanken: Klartext-Passwörter einmalig verschlüsseln
+    public static void Migrate()
+    {
+        foreach (var (id, pw) in Db.Query<(long, string)>("select id, password from accounts where substr(password,1,3) <> 'dp:'"))
+            Db.Exec("update accounts set password=@p where id=@id", new { id, p = Protect(pw) });
+    }
 }
 
 public static class Settings
