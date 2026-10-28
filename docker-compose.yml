@@ -16,6 +16,6 @@ services:
       SMTP_PASSWORD: ${SMTP_PASSWORD:-}
       SMTP_FROM: ${SMTP_FROM:-}           # leer = SMTP_USER
     volumes:
-      - /opt/spamfilter:/data   # Postfächer, Log, gelernte Daten, Regelgewichte
+      - /opt/spamsharp:/data   # Postfächer, Log, gelernte Daten, Regelgewichte
     ports:
       - "8083:8080"
