@@ -8,6 +8,13 @@ services:
     environment:
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:?ADMIN_PASSWORD setzen}
       TZ: Europe/Berlin
+      # optional, für „Passwort vergessen“ (ohne SMTP_HOST und PUBLIC_URL ausgeblendet)
+      PUBLIC_URL: ${PUBLIC_URL:-}         # Adresse der Weboberfläche für den Link in der Mail, z. B. https://spam.example.de
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_FROM: ${SMTP_FROM:-}           # leer = SMTP_USER
     volumes:
       - /opt/spamfilter:/data   # Postfächer, Log, gelernte Daten, Regelgewichte
     ports:

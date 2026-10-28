@@ -30,8 +30,18 @@
                 @foreach (var u in users)
                 {
                     <tr>
-                        <td>@u</td>
+                        <td>
+                            @if (renaming == u)
+                            {
+                                <input @bind="renameTo" type="email" autocapitalize="none" aria-label="Neuer Name für @u" />
+                            }
+                            else
+                            {
+                                @u
+                            }
+                        </td>
                         <td class="actions">
+                            <button @onclick="() => RenameUser(u)">@(renaming == u ? "Übernehmen" : "Umbenennen")</button>
                             <button class="danger" @onclick="() => DeleteUser(u)">@(confirmDelete == u ? "Wirklich löschen (mit Postfächern)?" : "Löschen")</button>
                         </td>
                     </tr>
@@ -41,7 +51,8 @@
     </div>
 }
 <div class="form">
-    <label>Benutzername <input @bind="newUser" autocomplete="off" autocapitalize="none" /></label>
+    <label>E-Mail-Adresse <small>dorthin geht „Passwort vergessen“</small>
+        <input type="email" @bind="newUser" autocomplete="off" autocapitalize="none" /></label>
     <label>Passwort <small>mind. 8 Zeichen; bei vorhandenem Benutzer wird das Passwort ersetzt</small>
         <input type="password" @bind="newPassword" autocomplete="new-password" /></label>
     @if (userMessage is not null)
@@ -84,7 +95,8 @@
     List<string> users = Users.All();
     List<Account> accounts = Db.Accounts();
     string newUser = "", newPassword = "";
-    string? userMessage, confirmDelete;
+    string? userMessage, confirmDelete, renaming;
+    string renameTo = "";
     bool userOk;
 
     void SaveUser()
@@ -92,14 +104,34 @@
         var name = newUser.Trim();
         (userOk, userMessage) = name switch
         {
-            "" => (false, "Bitte einen Benutzernamen eingeben."),
-            _ when name.Equals(Users.Admin, StringComparison.OrdinalIgnoreCase) => (false, "„admin“ ist reserviert."),
+            "" => (false, "Bitte eine E-Mail-Adresse eingeben."),
+            _ when !Users.IsEmail(name) && !Users.Exists(name) => (false, "Bitte eine gültige E-Mail-Adresse eingeben."),
             _ when newPassword.Length < 8 => (false, "Das Passwort braucht mindestens 8 Zeichen."),
             _ => (true, $"Benutzer „{name}“ gespeichert."),
         };
         if (!userOk) return;
         Users.Save(name, newPassword);
         (newUser, newPassword, users) = ("", "", Users.All());
+    }
+
+    void RenameUser(string name)
+    {
+        if (renaming != name)
+        {
+            (renaming, renameTo) = (name, Users.IsEmail(name) ? name : "");
+            return;
+        }
+        var to = renameTo.Trim();
+        (userOk, userMessage) = to switch
+        {
+            _ when to == name => (true, null),
+            _ when !Users.IsEmail(to) => (false, "Bitte eine gültige E-Mail-Adresse eingeben."),
+            _ when !to.Equals(name, StringComparison.OrdinalIgnoreCase) && Users.Exists(to) => (false, $"„{to}“ gibt es schon."),
+            _ => (true, $"„{name}“ heißt jetzt „{to}“."),
+        };
+        if (!userOk) return;
+        if (to != name) Users.Rename(name, to);
+        (renaming, users, accounts) = (null, Users.All(), Db.Accounts());
     }
 
     void Assign(Account a, string owner)

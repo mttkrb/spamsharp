@@ -109,5 +109,5 @@ input.weight { width: 90px; text-align: right; }
 body.login { display: grid; place-items: center; min-height: 100vh; padding: 16px; }
 body.login .card { width: 100%; max-width: 340px; background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 24px; }
 body.login h1 { margin: 0 0 4px; font-size: 1.3rem; }
-body.login .err { margin: 0; }
+body.login .err, body.login .ok { margin: 0; }
 .users { max-width: 520px; margin-bottom: 16px; }
