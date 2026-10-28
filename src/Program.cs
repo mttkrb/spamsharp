@@ -85,7 +85,7 @@ app.MapPost("/forgot", async (HttpContext ctx) =>
     var email = (await ctx.Request.ReadFormAsync())["user"].ToString().Trim();
     if (Users.IsEmail(email) && Users.Exists(email))
     {
-        var link = $"{Mailer.PublicUrl}/reset?t={Uri.EscapeDataString(Users.ResetToken(email))}";
+        var link = Mailer.ResetLink(email, TimeSpan.FromHours(1));
         // im Hintergrund: Antwortzeit verrät nicht, ob es die Adresse gibt
         _ = Task.Run(async () =>
         {
