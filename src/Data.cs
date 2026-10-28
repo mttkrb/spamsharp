@@ -193,7 +193,7 @@ public static class Users
 
     // Reset-Link: 1 Stunde gültig und nur bis zur nächsten Passwortänderung (Stamp)
     public static ITimeLimitedDataProtector ResetProtector = null!;
-    public static string ResetToken(string name) => ResetProtector.Protect(name + "\n" + Stamp(name), TimeSpan.FromHours(1));
+    public static string ResetToken(string name, TimeSpan valid) => ResetProtector.Protect(name + "\n" + Stamp(name), valid);
     public static string? ResetUser(string token)
     {
         try
@@ -242,6 +242,13 @@ public static class Mailer
     // Feste Adresse für Links in Mails (nicht den Host-Header der Anfrage nehmen, der ist fälschbar)
     public static readonly string? PublicUrl = Env("PUBLIC_URL")?.TrimEnd('/');
     public static bool Enabled => Host is not null && From is not null && PublicUrl is not null;
+
+    // Link zum Passwort-Festlegen, für „Passwort vergessen“ und Einladungen
+    public static string ResetLink(string name, TimeSpan valid) => $"{PublicUrl}/reset?t={Uri.EscapeDataString(Users.ResetToken(name, valid))}";
+
+    // Neuer Benutzer ohne Passwort: zufälliges (unbekanntes) Passwort, das er über den Link ersetzt
+    public static Task Invite(string name) => Send(name, "Einladung zu SpamSharp",
+        $"Du hast einen Zugang zum Spamfilter SpamSharp bekommen. Hier legst du dein Passwort fest (7 Tage gültig):\n{ResetLink(name, TimeSpan.FromDays(7))}\n\nDanach meldest du dich mit dieser E-Mail-Adresse an.");
 
     public static async Task Send(string to, string subject, string text)
     {
